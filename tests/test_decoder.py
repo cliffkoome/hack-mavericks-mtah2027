@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 from config import PARAMS
-from possession import H, A, D, X, decoder, evidence, spec as spec_module
+from possession import H, A, D, X, decoder, evidence, features, spec as spec_module
 
 FPS = 25
 LOG_TRANS = decoder.transition_matrix(PARAMS["decoder"], FPS)
@@ -125,14 +125,14 @@ def evidence_params(**overrides):
     return params
 
 
-def test_near_player_favours_their_team_far_player_says_nothing():
-    players = [[[10, 10], [60, 10]]] * 4
-    ball = [[11, 10], [13, 10], [35, 10], [59.5, 10]]  # near H, mid H, far, near A
+def test_team_cue_weakens_with_distance():
+    players = [[[10, 10], [80, 10]]] * 4
+    ball = [[11, 10], [13, 10], [30, 10], [79.5, 10]]  # near H, mid H, far H, near A
     log_emit = evidence.log_emissions(FakeTracking(players, ball, [H, A]), SPEC,
                                       evidence_params())
-    assert log_emit[0, H] > log_emit[1, H] > log_emit[1, A] > log_emit[0, A]
-    assert log_emit[2, H] == log_emit[2, A]
-    assert log_emit[3, A] > log_emit[3, H]
+    margin = log_emit[:, H] - log_emit[:, A]
+    assert margin[0] > margin[1] > margin[2] > 0
+    assert margin[3] < 0
 
 
 def test_missing_and_outside_ball_favour_dead():
@@ -141,6 +141,27 @@ def test_missing_and_outside_ball_favour_dead():
     log_emit = evidence.log_emissions(FakeTracking(players, ball, [H]), SPEC, evidence_params())
     assert log_emit[0, D] > log_emit[0, H]                    # not tracked
     assert log_emit[2, D] - log_emit[2, H] > log_emit[1, D] - log_emit[1, H]  # outside the lines
+
+
+def test_run_length():
+    flag = np.array([0, 1, 1, 0, 1, 1, 1, 0], dtype=bool)
+    assert features.run_length(flag).tolist() == [0, 2, 2, 0, 3, 3, 3, 0]
+
+
+def test_a_long_untracked_run_counts_as_at_most_the_cap():
+    """10 s of lost ball must not weigh more towards D than missing_run_cap frames of it."""
+    def dead_margin(n_missing):
+        n = n_missing + 2
+        spec = spec_module.GameSpec(n_frames=n, fps=FPS, pitch=(100.0, 50.0),
+                                    graded_blocks=((0, n - 1),), kickoffs=(0,))
+        players = np.full((n, 1, 2), np.nan)
+        ball = np.full((n, 2), np.nan)
+        log_emit = evidence.log_emissions(FakeTracking(players, ball, [H]), spec,
+                                          evidence_params())
+        return float(np.sum(log_emit[:, D] - log_emit[:, H]))
+    cap = PARAMS["evidence"]["missing_run_cap"]
+    assert dead_margin(250) == pytest.approx(dead_margin(cap - 2), rel=0.02)
+    assert dead_margin(10) < dead_margin(cap - 2)
 
 
 def test_weight_scales_everything():

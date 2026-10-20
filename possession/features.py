@@ -36,6 +36,17 @@ def ball_visible(tracking):
     return ~np.isnan(tracking.ball[:, 0])
 
 
+def run_length(flag):
+    """Per frame, the length of the run of True it belongs to; 0 where flag is False."""
+    flag = np.asarray(flag, dtype=bool)
+    edges = np.diff(np.concatenate(([0], flag.astype(np.int8), [0])))
+    starts, stops = np.flatnonzero(edges == 1), np.flatnonzero(edges == -1)
+    out = np.zeros(len(flag), dtype=np.int64)
+    for start, stop in zip(starts, stops):
+        out[start:stop] = stop - start
+    return out
+
+
 def ball_speed(tracking, fps, lag):
     """m/s over the last `lag` frames, NaN unless the ball is seen at both ends."""
     speed = np.full(len(tracking.ball), np.nan)

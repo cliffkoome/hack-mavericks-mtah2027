@@ -49,14 +49,20 @@ def cue_rows(tracking, spec, gt, params):
     outside = features.ball_outside(tracking, spec.pitch, params["outside_margin_m"])
     still = speed < params["still_speed"]
     known = ~np.isnan(speed)
+    # Diagnostics with no config value yet: does lost ball come in long runs in both states
+    # (what missing_run_cap assumes), and does a still ball show up over a full second?
+    long_gap = features.run_length(~visible) > spec.fps
+    slow = features.ball_speed(tracking, spec.fps, spec.fps)
     rows = []
     for name, flag, where, assumed in (
             ("ball not tracked", ~visible, np.ones_like(visible), "missing"),
             ("outside lines | tracked", outside, visible, "outside"),
-            ("still | speed known", still, known, "still")):
+            ("still | speed known", still, known, "still"),
+            ("untracked, run > 1 s", long_gap, np.ones_like(visible), None),
+            ("still over 1 s (< 0.5 m/s)", slow < 0.5, ~np.isnan(slow), None)):
         (r_alive, n_alive), (r_dead, n_dead) = rate(flag, alive & where), rate(flag, dead & where)
-        rows.append((name, r_alive, params[assumed + "_alive"], n_alive,
-                     r_dead, params[assumed + "_dead"], n_dead))
+        rows.append((name, r_alive, params[assumed + "_alive"] if assumed else None, n_alive,
+                     r_dead, params[assumed + "_dead"] if assumed else None, n_dead))
     return rows
 
 
@@ -109,8 +115,9 @@ def main():
     print("{:<26} {:>8} {:>8} {:>7}   {:>8} {:>8} {:>7}".format(
         "cue", "alive", "assumed", "n", "dead", "assumed", "n"))
     for name, ra, aa, na, rd, ad, nd in cue_rows(tracking, spec, gt, params):
-        print("{:<26} {:>8.3f} {:>8.3f} {:>7}   {:>8.3f} {:>8.3f} {:>7}".format(
-            name, ra, aa, na, rd, ad, nd))
+        print("{:<26} {:>8.3f} {:>8} {:>7}   {:>8.3f} {:>8} {:>7}".format(
+            name, ra, "-" if aa is None else "{:.3f}".format(aa), na,
+            rd, "-" if ad is None else "{:.3f}".format(ad), nd))
 
     print("\n2. team: nearest player's side vs possessing side, alive frames")
     print("{:<18} {:>10} {:>9} {:>8} {:>7}".format("distance band", "share", "accuracy",
