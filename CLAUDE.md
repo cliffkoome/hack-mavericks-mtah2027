@@ -73,6 +73,15 @@ evaluation/
   results/                  put candidate submission CSVs here (scored by run_evaluation)
 starter/                    loaders (ATD, homography, smart tagging), baseline, notebooks
 data/                       gated match data, gitignored (human only, see Hard Rules)
+
+-- ours --
+possession/                 the pipeline package: spec, atd, features, smoothing, rules, submission, pipeline
+config.py                   every hyperparameter (few)
+run_pipeline.py             the one command: bundle -> submissions/hack_mavericks.csv (+ sha256)
+tools/make_synthetic.py     fake bundle in the real formats + synthetic GT (.synthetic/, gitignored)
+tools/verify_baseline.py    real-data check: our reader must rebuild baseline_*.csv IDENTICALLY
+tests/                      pytest; synthetic data and the public GT only
+Makefile                    venv, test, synthetic, score, verify-baseline, submission, reproduce
 ```
 
 Always get paths via `from games import asset_paths` (tactical is default). Do not hard-code filenames.
