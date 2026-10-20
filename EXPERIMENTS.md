@@ -23,8 +23,8 @@ versions without a leaderboard, and it becomes the backbone of the technical doc
 
 | ID | date | commit | idea | decision |
 |---|---|---|---|---|
-| E000 | 2026-10-20 | b7292ff | Reproduce the reference baseline with our own code | keep: the floor and reader check |
-| E001 | 2026-10-20 | (this PR) | 3-state Viterbi decoder instead of the window vote | candidate; real-data check pending |
+| E000 | 2026-10-20 | b7292ff | Reproduce the reference baseline with our own code | keep: IDENTICAL ×4 on real data |
+| E001 | 2026-10-20 | PR #5 | 3-state Viterbi decoder instead of the window vote | keep: default model since PR #5 |
 
 ## Entry template
 
@@ -56,8 +56,12 @@ versions without a leaderboard, and it becomes the backbone of the technical doc
 - **Synthetic:** `features.nearest_team` equals the starter's nearest-player labels frame for
   frame, and `smoothing.majority_vote` equals `baseline.smooth` at 0/25/50/125
   (`tests/test_pipeline.py`).
-- **Public window:** n/a until the real data is read.
-- **Full-match check (human-run):** `make verify-baseline` → expect `IDENTICAL` ×4. **Pending.**
+- **Public window:** `hm_vote` scores exactly as `baseline_smooth50` (macroF1 0.6207, spellF1
+  0.3256, 26 possessions), as it must.
+- **Full-match check (human-run):** `make verify-baseline` → `IDENTICAL` for all four baselines.
+  Our reader, alignment, slot-team mapping and distance arithmetic match the starter on the real
+  file, frame for frame. Full match (vote): 584 possessions, mean 7.18 s, home share 0.566,
+  D 34.0% of graded frames.
 - **Decision:** keep as the floor (published spellF1 0.2433) and as the reference for E001.
 
 ### E001 — 3-state Viterbi decoder instead of the window vote
@@ -93,9 +97,31 @@ versions without a leaderboard, and it becomes the backbone of the technical doc
   2. **The weight is the sensitive parameter:** ×2 or ×½ costs 0.08–0.17 spellF1 here. It
      under-segments at 0.2 (0.73× the true possession count). Not retuned: on the real data
      the possession-count plausibility check decides whether it is in a sane range.
-- **Public window / full-match plausibility / bootstrap:** pending real data.
-- **Decision:** candidate. Switch the default to `"hmm"` only if, on the real data, `make
-  verify-baseline` passes and the full-match possession count and mean duration look like
-  football (hundreds of possessions, ~10–20 s).
-- **Follow-ups:** Smart Tagging set pieces as dead-ball/restart evidence; bridging long
-  missing-ball gaps; check what the real ball-missing rate is when the ball is dead.
+- **Pre-set criterion** (written before the real-data run): switch the default to `"hmm"` only
+  if `make verify-baseline` passes and the full-match possession count and mean duration look
+  like football (hundreds of possessions, ~10–20 s).
+- **Full-match plausibility** (human-run, 2026-10-20, aggregates only):
+
+  | | vote | hmm |
+  |---|---|---|
+  | possessions | 584 | 316 |
+  | mean duration | 7.18 s | 11.0 s |
+  | D share of graded frames | 34.0% | 45.3% |
+  | home share | 0.566 | 0.611 |
+
+- **Public window** (correctness only): hmm 18 possessions vs 17, mean 14.5 s vs 14.2 s;
+  macroF1 0.6831 (D F1 0.48 vs 0.32 for the vote), spellF1 0.3771 vs 0.3256. Inside the public
+  noise band: it shows the structure is right, not that hmm is better.
+- **Bootstrap:** pending (`run_evaluation.py --bootstrap 1000`).
+- **Decision:** keep. Both conditions of the pre-set criterion are met, so `model = "hmm"` is the
+  default from PR #5.
+- **Watch:**
+  1. **D may be over-called:** 45% of graded frames, against a typical 35–45% stoppage share in
+     elite football. On the public window, 385 A frames were called D.
+  2. **Transitions are early:** mean latency −10 frames, median −11, on 6 matched transitions.
+     A plausible cause is that the nearest player flips to the receiver while the ball is still
+     travelling, before control. Not corrected from the public window; a hypothesis for a
+     full-match test.
+- **Follow-ups:** calibrate the dead-ball cues against reality (what the ball-missing, outside and
+  still rates actually are when dead vs alive); Smart Tagging set pieces as restart evidence;
+  a control-based team cue for the early-transition bias.
