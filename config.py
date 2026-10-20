@@ -6,8 +6,8 @@ Few on purpose (CLAUDE.md): each one is a way to overfit. Never choose a value b
 
 PARAMS = {
     # Which model labels the frames: "vote" (the reference baseline) or "hmm" (decoder.py).
-    # Stays "vote" until the decoder has been checked on the real data (EXPERIMENTS.md E001).
-    "model": "vote",
+    # "hmm" since E001 met its pre-set real-data criterion (EXPERIMENTS.md).
+    "model": "hmm",
 
     # vote: majority-vote half-width in frames. 50 is the published baseline floor (EVALUATION.md).
     "smooth_window": 50,
