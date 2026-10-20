@@ -128,11 +128,13 @@ def evidence_params(**overrides):
 def test_team_cue_weakens_with_distance():
     players = [[[10, 10], [80, 10]]] * 4
     ball = [[11, 10], [13, 10], [30, 10], [79.5, 10]]  # near H, mid H, far H, near A
-    log_emit = evidence.log_emissions(FakeTracking(players, ball, [H, A]), SPEC,
-                                      evidence_params())
+    tracking = FakeTracking(players, ball, [H, A])
+    log_emit = evidence.log_emissions(tracking, SPEC, evidence_params(team_acc_far=0.6))
     margin = log_emit[:, H] - log_emit[:, A]
     assert margin[0] > margin[1] > margin[2] > 0
     assert margin[3] < 0
+    no_far = evidence.log_emissions(tracking, SPEC, evidence_params(team_acc_far=None))
+    assert no_far[2, H] == no_far[2, A]
 
 
 def test_missing_and_outside_ball_favour_dead():
@@ -148,20 +150,39 @@ def test_run_length():
     assert features.run_length(flag).tolist() == [0, 2, 2, 0, 3, 3, 3, 0]
 
 
+def _dead_margin(n_missing, **overrides):
+    n = n_missing + 2
+    spec = spec_module.GameSpec(n_frames=n, fps=FPS, pitch=(100.0, 50.0),
+                                graded_blocks=((0, n - 1),), kickoffs=(0,))
+    players = np.full((n, 1, 2), np.nan)
+    ball = np.full((n, 2), np.nan)
+    log_emit = evidence.log_emissions(FakeTracking(players, ball, [H]), spec,
+                                      evidence_params(**overrides))
+    return float(np.sum(log_emit[:, D] - log_emit[:, H]))
+
+
 def test_a_long_untracked_run_counts_as_at_most_the_cap():
-    """10 s of lost ball must not weigh more towards D than missing_run_cap frames of it."""
-    def dead_margin(n_missing):
-        n = n_missing + 2
-        spec = spec_module.GameSpec(n_frames=n, fps=FPS, pitch=(100.0, 50.0),
-                                    graded_blocks=((0, n - 1),), kickoffs=(0,))
-        players = np.full((n, 1, 2), np.nan)
-        ball = np.full((n, 2), np.nan)
-        log_emit = evidence.log_emissions(FakeTracking(players, ball, [H]), spec,
-                                          evidence_params())
-        return float(np.sum(log_emit[:, D] - log_emit[:, H]))
-    cap = PARAMS["evidence"]["missing_run_cap"]
-    assert dead_margin(250) == pytest.approx(dead_margin(cap - 2), rel=0.02)
-    assert dead_margin(10) < dead_margin(cap - 2)
+    """With a cap, 10 s of lost ball weighs no more towards D than `cap` frames of it."""
+    cap = 25
+    assert _dead_margin(250, missing_run_cap=cap) == pytest.approx(
+        _dead_margin(cap - 2, missing_run_cap=cap), rel=0.02)
+    assert _dead_margin(10, missing_run_cap=cap) < _dead_margin(cap - 2, missing_run_cap=cap)
+
+
+def test_no_cap_counts_every_untracked_frame():
+    """Uncapped, the evidence grows with every frame: per frame it is the same at any length."""
+    per_frame_long = _dead_margin(250, missing_run_cap=None) / 252
+    per_frame_short = _dead_margin(25, missing_run_cap=None) / 27
+    assert per_frame_long == pytest.approx(per_frame_short)
+
+
+def test_players_median_speed_and_rolling_mean():
+    speed = np.array([[1.0, 3.0, np.nan], [np.nan, np.nan, np.nan], [2.0, 4.0, 6.0]])
+    tracking = FakeTracking(np.zeros((3, 3, 2)), np.zeros((3, 2)), [H, H, A])
+    tracking.player_speed = speed
+    assert features.players_median_speed(tracking, 0)[[0, 2]].tolist() == [2.0, 4.0]
+    assert np.isnan(features.players_median_speed(tracking, 0)[1])
+    assert features.players_median_speed(tracking, 1).tolist() == [2.0, 3.0, 4.0]
 
 
 def test_weight_scales_everything():

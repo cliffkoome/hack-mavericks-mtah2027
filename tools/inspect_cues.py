@@ -51,15 +51,25 @@ def cue_rows(tracking, spec, gt, params):
     known = ~np.isnan(speed)
     # Diagnostics with no config value yet: does lost ball come in long runs in both states
     # (what missing_run_cap assumes), and does a still ball show up over a full second?
-    long_gap = features.run_length(~visible) > spec.fps
+    gap = features.run_length(~visible)
     slow = features.ball_speed(tracking, spec.fps, spec.fps)
+    walking = features.players_median_speed(tracking, spec.fps)
+    walk_known = ~np.isnan(walking)
+    everywhere = np.ones_like(visible)
+    candidates = [
+        ("ball not tracked", ~visible, everywhere, "missing"),
+        ("outside lines | tracked", outside, visible, "outside"),
+        ("still | speed known", still, known, "still"),
+        ("untracked, run > 1 s", gap > spec.fps, everywhere, None),
+        ("untracked, run > 3 s", gap > 3 * spec.fps, everywhere, None),
+        ("untracked, run > 10 s", gap > 10 * spec.fps, everywhere, None),
+        ("still over 1 s (< 0.5 m/s)", slow < 0.5, ~np.isnan(slow), None)]
+    # Players' median speed, mean over +/- 1 s: the share of frames below each threshold.
+    for threshold in (0.75, 1.0, 1.25, 1.5, 2.0):
+        candidates.append(("players median < {:.2f} m/s".format(threshold),
+                           walking < threshold, walk_known, None))
     rows = []
-    for name, flag, where, assumed in (
-            ("ball not tracked", ~visible, np.ones_like(visible), "missing"),
-            ("outside lines | tracked", outside, visible, "outside"),
-            ("still | speed known", still, known, "still"),
-            ("untracked, run > 1 s", long_gap, np.ones_like(visible), None),
-            ("still over 1 s (< 0.5 m/s)", slow < 0.5, ~np.isnan(slow), None)):
+    for name, flag, where, assumed in candidates:
         (r_alive, n_alive), (r_dead, n_dead) = rate(flag, alive & where), rate(flag, dead & where)
         rows.append((name, r_alive, params[assumed + "_alive"] if assumed else None, n_alive,
                      r_dead, params[assumed + "_dead"] if assumed else None, n_dead))
