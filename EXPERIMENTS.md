@@ -25,6 +25,7 @@ versions without a leaderboard, and it becomes the backbone of the technical doc
 |---|---|---|---|---|
 | E000 | 2026-10-20 | b7292ff | Reproduce the reference baseline with our own code | keep: IDENTICAL ×4 on real data |
 | E001 | 2026-10-20 | PR #5 | 3-state Viterbi decoder instead of the window vote | keep: default model since PR #5 |
+| E002 | 2026-10-20 | (this PR) | Recalibrate the evidence cues against measured rates | pending real-data run |
 
 ## Entry template
 
@@ -127,3 +128,50 @@ versions without a leaderboard, and it becomes the backbone of the technical doc
 - **Follow-ups:** calibrate the dead-ball cues against reality (what the ball-missing, outside and
   still rates actually are when dead vs alive); Smart Tagging set pieces as restart evidence;
   a control-based team cue for the early-transition bias.
+
+### E002 — Recalibrate the evidence cues against measured rates
+
+- **Date / author / commit:** 2026-10-20, Hack Mavericks, this PR
+- **Hypothesis:** E001's D over-call (45% of graded frames) comes from the untracked-ball cue.
+  The tracker loses the ball in long bursts (41% of graded frames over the match), and each
+  untracked frame was counted as independent evidence for D, so a few seconds of lost ball in
+  open play outvoted the switching costs. Meanwhile the "still" cue never fires (jitter), and
+  as configured every tracked frame pushed *against* D.
+- **Measured** (`tools/inspect_cues.py`, public window, human-run; frame-level rates over
+  thousands of frames, used to calibrate stated probabilities, not to compare scores):
+
+  | cue | alive (assumed) | dead (assumed) |
+  |---|---|---|
+  | ball untracked | 0.065 (0.40) | 0.336 (0.75) |
+  | outside lines, ball tracked | 0.000 (0.01) | 0.101 (0.30) |
+  | still over 5 frames | 0.009 (0.05) | 0.009 (0.50) |
+
+  Nearest-player team accuracy: < 2 m 0.873 (0.85 assumed), 2–5 m 0.647 (0.65), > 5 m 0.675
+  (assumed uninformative).
+
+  Smart Tagging, Team vs truth during the tag (1–5 tags per code, indicative only):
+  - BUILD UP, PROGRESSION, LONG BALL, ATTACKING TRANSITION: Team = the side with the ball.
+  - DEFENDING IN …, DEFENSIVE TRANSITION: Team = the side *without* it.
+  - SET PIECES free kick and goal kick: Team = the restarting side.
+  - BALL IN FINAL THIRD / IN THE BOX / PLAYERS IN THE BOX: ~1/3 each way; no team signal.
+  - KICK OFF (START): 1 tag, 37 frames, pointing to the other side; undetermined.
+- **Change** (`evidence.py`, `features.run_length`, `config.py`), with the reason for each value:
+  - `missing_run_cap = 25`: a run of untracked frames counts as at most 1 s of evidence.
+  - `missing_alive` 0.40 → 0.26, `missing_dead` 0.75 → 0.65: anchored on the documented
+    full-match 41% (0.62 × 0.26 + 0.38 × 0.65 = 0.41, with a ~38% stoppage share and a 2.5×
+    dead/alive ratio). Deliberately *not* the public-window rates: that window is unusually well
+    tracked (6.5% untracked in play against 41% over the match).
+  - `outside_alive` 0.01 → 0.002 (0 of 5,640 measured), `outside_dead` 0.30 → 0.10 (0.101).
+  - `still_dead` 0.50 → 0.05: neutralised (equal to alive) until a definition that survives
+    jitter is found; the tool now also reports a 1-second version.
+  - `team_acc_far = 0.6` (new): 0.675 measured, shrunk towards 0.5 for a 923-frame sample.
+- **Synthetic** (5 full seeds): hmm spellF1 0.551 → 0.585 ± 0.019, macroF1 0.835 → 0.868,
+  poss ratio 0.73 → 0.65. Nothing broke. The generator's own rates differ from these, so this
+  is not evidence for the values.
+- **Pre-set criterion for the real run:** keep E002 if the full-match D share falls from 45.3%
+  towards a typical 35–42% while the possession count stays in the hundreds with a 10–20 s mean.
+  Revert if the possession count collapses below ~200 or the D share rises.
+- **Full-match plausibility / public window:** pending (human-run).
+- **Decision:** pending.
+- **Follow-ups:** Smart Tagging set pieces as restart evidence (E003), using the Team semantics
+  above; a jitter-proof "ball still" cue if the 1-second diagnostic separates the two states.

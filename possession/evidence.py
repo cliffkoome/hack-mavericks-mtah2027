@@ -3,7 +3,10 @@
 Each frame contributes independent cues, each a probability with a plain meaning:
 
   team      the nearest player's side, trusted more the closer they are to the ball
-  visible   whether the tracker sees the ball at all (it loses it more often when it is dead)
+  visible   whether the tracker sees the ball at all (it loses it more often when it is dead).
+            The tracker loses the ball in long bursts, so a run of untracked frames counts as at
+            most `missing_run_cap` frames of evidence however long it lasts: otherwise a few
+            seconds of lost ball in open play outvote the switching costs and become a stoppage.
   outside   whether a seen ball is off the pitch (rare in play, common at a stoppage)
   still     whether a seen ball has stopped moving (a restart spot, or a ball waiting for one)
 
@@ -26,19 +29,23 @@ def log_emissions(tracking, spec, params):
     outside = features.ball_outside(tracking, spec.pitch, params["outside_margin_m"])
     out = np.zeros((len(team), 3))
 
-    # Team cue. How far to trust the nearest side depends on how near it is; beyond mid_m it says
-    # nothing. Under D the nearest side carries no information either way, so D scores log 0.5
-    # where the alive states score log(acc) for agreeing with it and log(1 - acc) for not.
+    # Team cue. How far to trust the nearest side depends on how near it is. Under D the nearest
+    # side carries no information either way, so D scores log 0.5 where the alive states score
+    # log(acc) for agreeing with it and log(1 - acc) for not.
     accuracy = np.where(distance < params["near_m"], params["team_acc_near"],
-                        np.where(distance < params["mid_m"], params["team_acc_mid"], np.nan))
-    cue = (team >= 0) & ~np.isnan(accuracy)
+                        np.where(distance < params["mid_m"], params["team_acc_mid"],
+                                 params["team_acc_far"]))
+    cue = team >= 0
     for state in (H, A):
         out[cue, state] = np.where(team[cue] == state, np.log(accuracy[cue]),
                                    np.log(1 - accuracy[cue]))
     out[cue, D] = np.log(0.5)
 
+    missing = ~visible
+    run = features.run_length(missing)
+    burst = np.where(missing, np.minimum(1.0, params["missing_run_cap"] / np.maximum(run, 1)), 1.0)
     alive_dead = (
-        _binary(~visible, params["missing_alive"], params["missing_dead"])
+        _binary(missing, params["missing_alive"], params["missing_dead"]) * burst[:, None]
         + _binary(outside, params["outside_alive"], params["outside_dead"], where=visible)
         + _binary(speed < params["still_speed"], params["still_alive"], params["still_dead"],
                   where=~np.isnan(speed))

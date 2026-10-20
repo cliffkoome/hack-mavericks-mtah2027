@@ -5,6 +5,6 @@
     "sessionUrl": false
   },
   "permissions": {
-    "deny": ["Read(data/broadcast)", "Read(data/tactical)"]
+    "deny": ["Read(./data/broadcast/**)", "Read(./data/tactical/**)"]
   }
 }
