@@ -26,6 +26,7 @@ versions without a leaderboard, and it becomes the backbone of the technical doc
 | E000 | 2026-10-20 | b7292ff | Reproduce the reference baseline with our own code | keep: IDENTICAL ×4 on real data |
 | E001 | 2026-10-20 | PR #5 | 3-state Viterbi decoder instead of the window vote | keep: default model since PR #5 |
 | E002 | 2026-10-20 | PR #8 | Recalibrate the evidence cues against measured rates | drop: D share 45% -> 8%; reverted in PR #9 |
+| E003 | — | not yet | Player-movement cue (players walk at stoppages) | planned: next step |
 
 ## Entry template
 
@@ -189,9 +190,48 @@ versions without a leaderboard, and it becomes the backbone of the technical doc
   dead). Lesson: untracked ball cannot carry dead-ball detection in either direction, and
   changing five values at once made the result hard to attribute.
 - **Decision:** drop. E001's exact values restored in PR #9 (verified on synthetic data: the
-  same labels as E001's code and config; on the real data the sha256 must equal E001's
-  `6501615e…`). Measured rates stay noted in `config.py` for one-at-a-time changes.
+  same labels as E001's code and config; on the real data the sha256 equals E001's
+  `6501615e…`, confirmed by the human run). Measured rates stay noted in `config.py` for one-at-a-time changes.
 - **Follow-ups:** E003, a players-movement cue (median player speed over ±1 s: players walk at
   stoppages and stay tracked when the ball does not), calibrated with the new
   `inspect_cues.py` rows before it is switched on. Then Smart Tagging set pieces as restart
   evidence, using the Team semantics above.
+
+### E003 — Player-movement cue (planned; specified before implementation)
+
+- **Status:** planned. Nothing implemented yet. This entry fixes the design and the criterion
+  *before* the code and the real-data run.
+- **Hypothesis:** players stay tracked when the ball does not. In play they jog and sprint; at a
+  stoppage they walk. A cue on the players' median speed should add dead-ball evidence where it
+  belongs and, just as important, evidence *against* D during open play with the ball lost, which
+  is where E001 over-calls D.
+- **Measured** (`tools/inspect_cues.py`, public window, human-run; players' median speed, mean
+  over ±1 s; share of frames below each threshold):
+
+  | threshold | alive (n = 6031) | dead (n = 1469) | dead / alive |
+  |---|---|---|---|
+  | < 0.75 m/s | 0.007 | 0.000 | — |
+  | < 1.00 m/s | 0.038 | 0.233 | 6.1 |
+  | **< 1.25 m/s** | **0.104** | **0.624** | **6.0** |
+  | < 1.50 m/s | 0.210 | 0.797 | 3.8 |
+  | < 2.00 m/s | 0.442 | 0.863 | 2.0 |
+
+  Same run, other diagnostics: untracked runs > 10 s are 0.000 of alive frames vs 0.249 of dead
+  (a strong cue for a later, separate experiment); the 1-second still-ball cue does not separate
+  the states (0.024 vs 0.025).
+- **Design** (the only change against E001):
+  - feature `features.players_median_speed(tracking, window=fps)`: already implemented and tested;
+  - binary cue "players slow": median speed < `slow_speed = 1.25` m/s (best ratio with useful
+    recall);
+  - `slow_alive = 0.10`, `slow_dead = 0.62` (the measured rates, rounded); unknown where no
+    player is tracked;
+  - added to the alive/dead part of `evidence.log_emissions` like the other `_binary` cues;
+    every other value stays at E001's.
+- **Pre-set criterion for the real run:**
+  - **keep** if the full-match D share moves from 45.3% into 30–42% while possessions stay
+    ≥ 200 with a 10–20 s mean;
+  - **revert** if the D share rises, falls below 30%, or possessions fall below 200;
+  - the public window is reported for correctness only.
+- **Commands for the human after merging:**
+  `run_pipeline.py --out evaluation/results/hm_hmm_e003.csv`, then
+  `run_evaluation.py --no-detail`; paste back the JSON summary and the board.
