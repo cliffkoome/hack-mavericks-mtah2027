@@ -170,3 +170,28 @@ python starter/baseline.py                            # rebuild baselines (needs
 - Plan first; propose changes before large refactors. Ask before anything that would touch `data/`.
 - Prefer simple, explainable logic over opaque models; the organisers must be able to inspect it.
 - When a result looks too good, suspect an off-by-one in frame alignment or leakage from the public window.
+- Workflow that works for this team: one change per branch and PR (`feat/...`, `fix/...`, `docs/...`);
+  the human reviews and merges. Claude never runs data-touching commands; it hands the human the exact
+  commands, and the human pastes back aggregate output only (scores, counts, rates, sha256).
+- One change per experiment, with its keep/revert criterion written in EXPERIMENTS.md *before* the
+  real-data run. The criterion decides, not the public-window score (its noise band is ±0.33).
+
+## Current status (update at the end of every session)
+
+Last updated: 2026-10-20.
+
+- **Submitted model:** `hmm` (3-state Viterbi, `possession/decoder.py`) with E001's evidence values.
+  Real data, full match: 316 possessions, mean 11.0 s, D 45.3% of graded frames, sha256 `6501615e…`.
+  Public window (correctness only): spellF1 0.3771, macroF1 0.6831. Floor to beat: spellF1 0.2433.
+- **Verified on the real data:** `make verify-baseline` IDENTICAL ×4 (reader, alignment, slot teams).
+- **Known weakness:** D is over-called (45% vs a typical 35–42%), driven by untracked-ball frames
+  counted as dead-ball evidence. E002 (cap + recalibration) over-corrected to 8% and was reverted.
+- **Next step: E003, the player-movement cue** — fully specified in EXPERIMENTS.md (E003): cue
+  definition, the measured rates it uses, and the pre-set keep/revert criterion. Implement it as the
+  only change, then hand the human the run commands.
+- **Queued after E003:** untracked-ball runs > 10 s as a dead-ball cue (0% alive vs 25% dead
+  measured); Smart Tagging set pieces as restart evidence (Team semantics in E002); a control-based
+  team cue for transitions ~10 frames early; `tools/check_format.py` is no longer needed (the real
+  bundle parses and verify-baseline passes).
+- **Deliverables still to do:** `hack_mavericks.md` technical document; make the repo public before
+  17 November 2026; final `make reproduce` + `validate_submission.py` per "Before every submission".
