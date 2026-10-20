@@ -112,7 +112,9 @@ versions without a leaderboard, and it becomes the backbone of the technical doc
 - **Public window** (correctness only): hmm 18 possessions vs 17, mean 14.5 s vs 14.2 s;
   macroF1 0.6831 (D F1 0.48 vs 0.32 for the vote), spellF1 0.3771 vs 0.3256. Inside the public
   noise band: it shows the structure is right, not that hmm is better.
-- **Bootstrap:** pending (`run_evaluation.py --bootstrap 1000`).
+- **Bootstrap** (public window, 1000 draws): the scorer reports gaps below **~0.33 spellF1** as
+  within noise. Every submission on the public board is inside that band, so the public window
+  cannot order hmm, vote or any baseline. Full-match plausibility is the deciding evidence.
 - **Decision:** keep. Both conditions of the pre-set criterion are met, so `model = "hmm"` is the
   default from PR #5.
 - **Watch:**
