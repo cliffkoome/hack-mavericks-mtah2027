@@ -1,4 +1,4 @@
-"""Per-frame evidence about who has the ball."""
+"""Per-frame evidence about who has the ball and whether it is in play."""
 
 import numpy as np
 
@@ -6,19 +6,47 @@ import numpy as np
 NOBODY = -1
 
 
-def nearest_team(tracking):
-    """Team (H/A) of the tracked slot nearest the ball, NOBODY where the ball or every player is
-    missing.
+def nearest_player(tracking):
+    """(team, distance): team (H/A) of the tracked slot nearest the ball and its distance in
+    metres; NOBODY and inf where the ball or every player is missing.
 
     The same decision as starter/baseline.py's nearest_player_labels, arithmetic included:
     squared distance in metres, first slot wins a tie. test_pipeline.py checks the two agree
     frame for frame, which is also what proves atd.load reads the file the way the starter does.
     """
     gap = tracking.players - tracking.ball[:, None, :]
-    distance = gap[..., 0] * gap[..., 0] + gap[..., 1] * gap[..., 1]
-    seen = ~np.isnan(distance)
-    out = np.full(len(distance), NOBODY, dtype=np.int8)
+    squared = gap[..., 0] * gap[..., 0] + gap[..., 1] * gap[..., 1]
+    seen = ~np.isnan(squared)
+    team = np.full(len(squared), NOBODY, dtype=np.int8)
+    distance = np.full(len(squared), np.inf)
     answer = seen.any(axis=1)
-    nearest = np.argmin(np.where(seen, distance, np.inf)[answer], axis=1)
-    out[answer] = tracking.slot_team[nearest]
-    return out
+    masked = np.where(seen, squared, np.inf)[answer]
+    nearest = np.argmin(masked, axis=1)
+    team[answer] = tracking.slot_team[nearest]
+    distance[answer] = np.sqrt(masked[np.arange(len(nearest)), nearest])
+    return team, distance
+
+
+def nearest_team(tracking):
+    """Team of the nearest slot only; see nearest_player."""
+    return nearest_player(tracking)[0]
+
+
+def ball_visible(tracking):
+    return ~np.isnan(tracking.ball[:, 0])
+
+
+def ball_speed(tracking, fps, lag):
+    """m/s over the last `lag` frames, NaN unless the ball is seen at both ends."""
+    speed = np.full(len(tracking.ball), np.nan)
+    step = tracking.ball[lag:] - tracking.ball[:-lag]
+    speed[lag:] = np.hypot(step[:, 0], step[:, 1]) * fps / lag
+    return speed
+
+
+def ball_outside(tracking, pitch, margin):
+    """True where the ball is seen more than `margin` metres outside the pitch lines."""
+    x, y = tracking.ball[:, 0], tracking.ball[:, 1]
+    length, width = pitch
+    with np.errstate(invalid="ignore"):
+        return (x < -margin) | (x > length + margin) | (y < -margin) | (y > width + margin)
