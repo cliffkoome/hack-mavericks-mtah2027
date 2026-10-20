@@ -25,7 +25,7 @@ versions without a leaderboard, and it becomes the backbone of the technical doc
 |---|---|---|---|---|
 | E000 | 2026-10-20 | b7292ff | Reproduce the reference baseline with our own code | keep: IDENTICAL ×4 on real data |
 | E001 | 2026-10-20 | PR #5 | 3-state Viterbi decoder instead of the window vote | keep: default model since PR #5 |
-| E002 | 2026-10-20 | (this PR) | Recalibrate the evidence cues against measured rates | pending real-data run |
+| E002 | 2026-10-20 | PR #8 | Recalibrate the evidence cues against measured rates | drop: D share 45% -> 8%; reverted in PR #9 |
 
 ## Entry template
 
@@ -171,7 +171,27 @@ versions without a leaderboard, and it becomes the backbone of the technical doc
 - **Pre-set criterion for the real run:** keep E002 if the full-match D share falls from 45.3%
   towards a typical 35–42% while the possession count stays in the hundreds with a 10–20 s mean.
   Revert if the possession count collapses below ~200 or the D share rises.
-- **Full-match plausibility / public window:** pending (human-run).
-- **Decision:** pending.
-- **Follow-ups:** Smart Tagging set pieces as restart evidence (E003), using the Team semantics
-  above; a jitter-proof "ball still" cue if the 1-second diagnostic separates the two states.
+- **Full-match plausibility** (human-run, aggregates only):
+
+  | | E001 | E002 | pre-set criterion |
+  |---|---|---|---|
+  | D share of graded frames | 45.3% | **8.4%** | towards 35–42% |
+  | possessions | 316 | 251 | ≥ ~200 |
+  | mean duration | 11.0 s | **23.2 s** | 10–20 s |
+  | home share | 0.611 | 0.535 | |
+
+- **Public window** (correctness only): macroF1 0.6831 → 0.5490, the D class collapsing;
+  spellF1 0.3771 → 0.4121, inside the ±0.33 noise band and ignored as the rules require.
+- **Why it failed:** the new diagnostics show untracked frames come in runs longer than 1 s
+  in *both* states (alive 0.064 of 0.065; dead 0.336 of 0.336). The cap therefore removed
+  nearly all D evidence along with the false D, leaving too little to pay the switching costs.
+  The still cue measured over 1 s does not separate the states either (0.024 alive, 0.025
+  dead). Lesson: untracked ball cannot carry dead-ball detection in either direction, and
+  changing five values at once made the result hard to attribute.
+- **Decision:** drop. E001's exact values restored in PR #9 (verified on synthetic data: the
+  same labels as E001's code and config; on the real data the sha256 must equal E001's
+  `6501615e…`). Measured rates stay noted in `config.py` for one-at-a-time changes.
+- **Follow-ups:** E003, a players-movement cue (median player speed over ±1 s: players walk at
+  stoppages and stay tracked when the ball does not), calibrated with the new
+  `inspect_cues.py` rows before it is switched on. Then Smart Tagging set pieces as restart
+  evidence, using the Team semantics above.
