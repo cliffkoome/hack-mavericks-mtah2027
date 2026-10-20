@@ -1,10 +1,12 @@
-# Everything the evaluation needs. Deliberately two lines.
+# Everything the evaluation and the Hack Mavericks pipeline need.
 #
-# The scorer is dependency-light on purpose: no sklearn, no torch, nothing that pins a Python
-# version. It runs under 3.8 and 3.11 alike and produces identical output, so "it scored
-# differently on my machine" is not a conversation anyone has to have.
+# Pinned so the submission CSV regenerates byte-identically (SUBMISSION.md, RULES.md #3). Verified
+# under Python 3.12.7: with these versions evaluation/run_evaluation.py reproduces the README board
+# exactly. Change a pin only together with a `make reproduce` check and a note in EXPERIMENTS.md.
 #
-# Optional tooling -- the ATD loader and anything that opens the video -- lives in
-# requirements-starter.txt.
-numpy
-pandas
+# Optional tooling -- the ATD loader via kloppy and anything that opens the video -- lives in
+# requirements-starter.txt. Test tooling lives in requirements-dev.txt.
+numpy==2.5.4
+pandas==3.0.6
+python-dateutil==2.9.0.post0
+six==1.17.0

@@ -133,8 +133,9 @@ python starter/baseline.py                            # rebuild baselines (needs
 
 ## Coding conventions
 
-- Environment: repo `.venv` built from pyenv 3.12.7; system python has no numpy. Dev deps (pytest) in
-  `requirements-dev.txt`. Synthetic bundles and caches go in gitignored folders.
+- Environment: `make venv` builds `.venv` from pyenv 3.12.7 (`.python-version`) with the pinned
+  `requirements-dev.txt`; always run Python as `.venv/bin/python` (system python has no numpy).
+  Synthetic bundles and caches go in gitignored folders.
 - Python 3.9+, numpy/pandas first. Keep the scorer-compatible pieces plain. Pin versions in `requirements.txt`.
 - Determinism: fixed seeds, no nondeterministic GPU ops in the final label path. One command must
   regenerate the final CSV from the data bundle (`make submission` or `python run_pipeline.py`).
