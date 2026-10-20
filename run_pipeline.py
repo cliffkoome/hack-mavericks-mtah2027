@@ -23,12 +23,16 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--data-dir", help="bundle root (default: $MTAH_DATA_DIR or ./data)")
     parser.add_argument("--out", default=DEFAULT_OUT)
+    parser.add_argument("--model", choices=pipeline.MODELS,
+                        help="override config.py's model, for experiments; the submission "
+                             "itself is always built from config.py as committed")
     args = parser.parse_args()
 
-    codes, spec = pipeline.build(PARAMS, args.data_dir)
+    params = dict(PARAMS, model=args.model or PARAMS["model"])
+    codes, spec = pipeline.build(params, args.data_dir)
     digest = submission.write(args.out, codes)
     reason = submission.validate(args.out, spec)
-    print(json.dumps({"out": os.path.relpath(args.out, ROOT), "params": PARAMS,
+    print(json.dumps({"out": os.path.relpath(args.out, ROOT), "model": params["model"],
                       "valid": reason is None, "reason": reason, "sha256": digest,
                       **submission.summary(codes, spec)}, indent=2))
     return 0 if reason is None else 1
