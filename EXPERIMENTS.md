@@ -18,6 +18,10 @@ versions without a leaderboard, and it becomes the backbone of the technical doc
   in any conversation with a hosted LLM (CLAUDE.md).
 - **Parameter values are set by reasoning recorded here, before seeing results.** If a value is
   changed after seeing a result, say so in the entry.
+- **External sanity check, never a target:** published match stats give Barcelona ~65% of the
+  possession (a pass-based broadcast figure, not the tracking-based definition here). Our home
+  share while the ball is alive is 0.60 (E003). A change that moves it clearly *away* from ~0.65
+  deserves a second look; no value is ever set to move it towards 0.65.
 
 ## Index
 
@@ -28,6 +32,7 @@ versions without a leaderboard, and it becomes the backbone of the technical doc
 | E002 | 2026-10-20 | PR #8 | Recalibrate the evidence cues against measured rates | drop: D share 45% -> 8%; reverted in PR #9 |
 | E003 | 2026-10-21 | PR #11 | Player-movement cue (players walk at stoppages) | keep: D share 45.3% -> 36.7% |
 | E004 | 2026-10-21 | PR #13 | Long untracked-ball runs (> 10 s) as dead-ball evidence | drop: value rule gives alive rate 0.41 ≥ 0.15; not implemented |
+| E005 | — | not yet | Team from player shape where the ball is untracked | planned: measure first |
 
 ## Entry template
 
@@ -352,3 +357,58 @@ versions without a leaderboard, and it becomes the backbone of the technical doc
     change inside a gap is invisible today. That is approach-plan step 4 (a team model on player
     configuration for long gaps) and probably the largest remaining source of error.
 - **Decision:** drop, by the pre-set rule. No code change to the model.
+
+### E005 — Team from player shape where the ball is untracked (planned; measure first)
+
+- **Status:** planned. Nothing implemented. Design, value rule and criteria are fixed here before
+  any code or measurement.
+- **Problem** (E004 table 4): 17.2% of predicted-alive frames have no ball, so no team cue at all.
+  There the decoder carries the last side through the gap, so a possession that changes hands
+  inside a gap is lost. E003 predicts 275 possessions; the public window's rate (17 in 5 min)
+  scaled to the graded time suggests roughly 350 (a rough figure from 17 possessions). Under-
+  segmentation in gaps is the most likely cause.
+- **Hypothesis:** players show who has the ball without the ball. The side in possession pushes
+  up and spreads out; the side without it drops back and closes up. A small model of team shape,
+  learned from frames where the ball *is* seen, can supply a team cue inside the gaps.
+- **Design:**
+  - Attacking direction per half, label-free: each team defends the end its players' mean x is
+    nearer to over that half.
+  - Three per-frame features, each home minus away, so swapping the teams flips the sign:
+    1. *advance*: mean outfield x towards the opponent's goal;
+    2. *spread*: std x × std y of the team's players;
+    3. *push*: mean velocity towards the opponent's goal over ±1 s.
+  - Logistic regression P(H | features) with no intercept (symmetric: no home prior baked in;
+    the decoder already holds priors). Fit by Newton's method in numpy, so it is deterministic.
+  - Training labels, self-supervised, from the full match, no ground truth: frames that E003
+    predicts alive, with the ball seen and the nearest player within `near_m` (2 m); label = that
+    player's side (0.873 accurate on the public window).
+  - The model is refit inside the pipeline on every run. No weights are committed, and the
+    labels come from the tracking itself, so it stays reproducible and leaks nothing.
+  - Cue, used **only on frames where the ball is untracked** (seen frames keep the nearest-player
+    cue, so nothing is double-counted). Two bands like the existing team cue: *strong*
+    (P ≥ 0.7 or ≤ 0.3) and *weak*. Each band gets an accuracy; the alive states score log(acc)
+    for agreeing with the model's side and log(1 − acc) otherwise, and D scores log 0.5.
+- **Measurement first** (new `tools/team_shape_check.py`, human-run; aggregates only):
+  - cross-half hold-out: fit on one half, test on the other, both ways. Accuracy against the
+    training label per band, with n and share of frames in each band;
+  - the fitted coefficients (3 numbers, for the write-up's explainability);
+  - public window, against the truth: accuracy on alive frames with the ball seen and with it
+    untracked (only ~391 of those frames, from a handful of possessions: indicative only);
+  - share of untracked predicted-alive frames in each band over the full match.
+- **Rule for the values, fixed now:**
+  - `shape_acc_strong`, `shape_acc_weak` = the pooled cross-half accuracies, each shrunk
+    halfway towards 0.5 (training frames are close-control frames with the ball seen; gap frames
+    are harder: crowds, long balls).
+  - **Drop without implementing** if pooled hold-out accuracy is < 0.60, or strong-band accuracy
+    < 0.65, or the public untracked accuracy is below 0.5 (worse than a coin).
+- **Pre-set criterion for the real run** (if it goes ahead, the only change against E003):
+  - **keep** if possessions rise above 275 and stay ≤ 400, mean 10–20 s, D share within 30–42%,
+    and the public window still passes (17 ± 3 possessions, macroF1 not below 0.6825 by more
+    than 0.01);
+  - **revert** otherwise;
+  - secondary, not decisive: the home share should not move clearly away from ~0.65 (rules).
+- **Known limitation:** the hold-out test uses frames with the ball seen. Gap frames differ (ball
+  in the air or in a crowd), so the hold-out accuracy is an upper bound for the gaps; hence the
+  shrinkage and the separate public untracked check.
+- **Synthetic:** the generator moves players towards formation anchors that shift with the ball,
+  so it should show some shape signal; that tests the code, not the size of the effect.
