@@ -92,7 +92,7 @@ Always get paths via `from games import asset_paths` (tactical is default). Do n
 ## Commands
 
 ```bash
-pip install -r requirements.txt                       # numpy, pandas
+pip install -r requirements.txt                       # numpy, pandas, scikit-learn
 python evaluation/run_evaluation.py                   # score everything in evaluation/results/
 python evaluation/run_evaluation.py --bootstrap 1000  # confidence intervals
 python evaluation/validate_submission.py <file>.csv   # ALWAYS before submitting
@@ -148,7 +148,7 @@ python starter/baseline.py                            # rebuild baselines (needs
 - Environment: `make venv` builds `.venv` from pyenv 3.12.7 (`.python-version`) with the pinned
   `requirements-dev.txt`; always run Python as `.venv/bin/python` (system python has no numpy).
   Synthetic bundles and caches go in gitignored folders.
-- Python 3.9+, numpy/pandas first. Keep the scorer-compatible pieces plain. Pin versions in `requirements.txt`.
+- Python 3.9+, numpy/pandas first (scikit-learn only for E005b's classifier). Keep the scorer-compatible pieces plain. Pin versions in `requirements.txt`.
 - Determinism: fixed seeds, no nondeterministic GPU ops in the final label path. One command must
   regenerate the final CSV from the data bundle (`make submission` or `python run_pipeline.py`).
 - Few hyperparameters. Do NOT tune against the public 5 minutes to choose between versions; use it only
@@ -178,7 +178,7 @@ python starter/baseline.py                            # rebuild baselines (needs
 
 ## Current status (update at the end of every session)
 
-Last updated: 2026-10-21 (E005a measured; E005b proposed).
+Last updated: 2026-10-21 (E005b built).
 
 - **Submitted model:** `hmm` (3-state Viterbi, `possession/decoder.py`), E001's evidence values
   plus E003's player-movement cue (players' median speed < 1.25 m/s over ±1 s).
@@ -196,9 +196,11 @@ Last updated: 2026-10-21 (E005a measured; E005b proposed).
   in long blocks, and 17% of predicted-alive frames have no ball, so no team evidence.
 - **E005a done** (masked-ball harness, PR #17): hiding the ball in play, E003 catches 11.5% of
   side changes and loses ~34 possessions (275 → 241). Rerun pending with the dead/wrong-side split.
-- **Next step: E005b, team-from-movement classifier** (design in EXPERIMENTS.md, awaiting the
-  human's OK and the split rerun; go ahead only if wrong_side ≥ to_dead). Then E005c gap-only
-  emissions, E006 visible-ball change rules, E007 restarts, E008 Metrica sample-data harness.
+- **E005b built** (team-from-movement classifier, `possession/team_model.py`; not in the pipeline
+  yet). Go-ahead met: on hidden frames wrong_side 0.264 ≥ to_dead 0.167. Synthetic (b) 0.65–0.69.
+- **Next step:** the human runs `tools/team_model_check.py` (gate: (b) ≥ 0.60, (d) ≥ 0.5). If it
+  passes, design E005c (gap-only emissions) from its numbers. Then E006–E008; dead-in-gaps (0.17
+  of hidden alive frames) is a candidate after E005c.
 - **Queued:** Smart Tagging set pieces as restart evidence (fits with E007); a control-based team
   cue for transitions ~10 frames early; generator fixes in `make_synthetic.py` (players walk at
   stoppages; ball lost in runs > 10 s).
