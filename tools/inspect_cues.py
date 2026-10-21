@@ -15,6 +15,10 @@ safe to paste back:
   3. tagging   per Smart Tagging code (and set-piece Type), over tags overlapping the graded
                frames of the GT: what the truth is during the tag, split into the tag's own side,
                the other side, and dead ball. Answers "does Team mean attacker or defender here?"
+  4. match     over every decoded frame of the full match (kickoff to end of each half), no
+               ground truth: how often each untracked-run cue fires, overall and split by what
+               the current model (config.py) predicts. The public window is unusually well
+               tracked, so rates measured there can miss how the ball is lost over the match.
 
 17 possessions is a small sample: read the n column before any rate.
 """
@@ -30,7 +34,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
 from config import PARAMS  # noqa: E402
-from possession import H, A, D, X, atd, features, spec as spec_module, tagging  # noqa: E402
+from possession import H, A, D, X, atd, features, pipeline, tagging  # noqa: E402
+from possession import spec as spec_module  # noqa: E402
 import possession_metrics as pm  # noqa: E402
 
 PUBLIC_GT = os.path.join(ROOT, "evaluation", "gt", "BAR-ATH_possession_gt_public.csv")
@@ -110,6 +115,24 @@ def tagging_rows(events, gt):
     return {key: [int(v[0]), int(v[1])] + list(v[2:] / v[1]) for key, v in sorted(sums.items())}
 
 
+def match_rows(tracking, spec, codes):
+    """Rows (cue, all, predicted alive, predicted D) of rates over the decoded frames, then a row
+    of frame counts. The 2nd-half frames before kickoff are D by rule and left out."""
+    decoded = np.zeros(spec.n_frames, dtype=bool)
+    for (_, last), kickoff in zip(spec.graded_blocks, spec.kickoffs):
+        decoded[kickoff:last + 1] = True
+    gap = features.run_length(~features.ball_visible(tracking))
+    walking = features.players_median_speed(tracking, spec.fps)
+    strata = (decoded, decoded & (codes <= A), decoded & (codes == D))
+    cues = [("ball not tracked", gap > 0),
+            ("untracked, run > 1 s", gap > spec.fps),
+            ("untracked, run > 3 s", gap > 3 * spec.fps),
+            ("untracked, run > 10 s", gap > 10 * spec.fps),
+            ("untracked > 10 s & slow", (gap > 10 * spec.fps) & (walking < 1.25))]
+    rows = [(name,) + tuple(rate(flag, where)[0] for where in strata) for name, flag in cues]
+    return rows + [("frames",) + tuple(int(where.sum()) for where in strata)]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--data-dir")
@@ -144,6 +167,13 @@ def main():
             tagging.load(args.data_dir), gt).items():
         print("{:<30} {:<24} {:>5} {:>7} {:>6.2f} {:>6.2f} {:>6.2f}".format(
             code[:30], (kind or "")[:24], n, frames, own, other, dead))
+
+    print("\n4. match: share of decoded frames, full match, split by the current prediction")
+    print("{:<26} {:>8} {:>8} {:>8}".format("cue", "all", "pred H/A", "pred D"))
+    rows = match_rows(tracking, spec, pipeline.label(tracking, spec, PARAMS))
+    for name, every, alive, dead in rows[:-1]:
+        print("{:<26} {:>8.3f} {:>8.3f} {:>8.3f}".format(name, every, alive, dead))
+    print("{:<26} {:>8} {:>8} {:>8}".format(*rows[-1]))
 
 
 if __name__ == "__main__":

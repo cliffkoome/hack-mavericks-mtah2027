@@ -27,6 +27,7 @@ versions without a leaderboard, and it becomes the backbone of the technical doc
 | E001 | 2026-10-20 | PR #5 | 3-state Viterbi decoder instead of the window vote | keep: default model since PR #5 |
 | E002 | 2026-10-20 | PR #8 | Recalibrate the evidence cues against measured rates | drop: D share 45% -> 8%; reverted in PR #9 |
 | E003 | 2026-10-21 | PR #11 | Player-movement cue (players walk at stoppages) | keep: D share 45.3% -> 36.7% |
+| E004 | — | not yet | Long untracked-ball runs (> 10 s) as dead-ball evidence | planned: measure first |
 
 ## Entry template
 
@@ -279,3 +280,48 @@ versions without a leaderboard, and it becomes the backbone of the technical doc
   reading that drop as a generator mismatch.
 - **Follow-ups:** make the generator's players walk at stoppages (a `make_synthetic.py` change,
   kept out of this experiment so E003 stays a single change).
+
+### E004 — Long untracked-ball runs as dead-ball evidence (planned; measure first)
+
+- **Status:** planned. Only the diagnostic is implemented (`inspect_cues.py` table 4). The values
+  are not set yet: they depend on a full-match measurement, and the rule that sets them is fixed
+  here, before that measurement.
+- **Hypothesis:** the ball goes untracked for long stretches mostly at long stoppages (goals,
+  injuries, substitutions, balls into the stands), and those may be where the D share comes from
+  after E003. A run's *length* says more than any single untracked frame, which by itself barely
+  separates the states (E002).
+- **Measured so far** (public window, E003 table): untracked runs > 10 s cover 0.000 of alive
+  frames (n = 6031) and 0.249 of dead frames (n = 1469).
+- **Why the public alive rate cannot be used:** that window loses the ball on 6.5% of in-play
+  frames, against 41% over the match (E002). A 0.000 measured there would make the cue close to a
+  veto over the full match, the same transfer error that sank E002. The alive rate has to come
+  from the full match.
+- **Measurement first** (`inspect_cues.py` table 4, human-run; aggregates only): over the decoded
+  frames of the full match, the share inside untracked runs > 10 s, overall and split by E003's
+  prediction (pred H/A, pred D).
+- **Rule for the values, fixed now:**
+  - `long_gap_dead = 0.25`: the public dead rate. Stoppages are less sensitive to how well the
+    window is tracked than open play.
+  - `long_gap_alive` = the larger of two full-match estimates, with a floor of 0.02:
+    (a) table 4's pred H/A rate; (b) the mixture estimate (all − 0.367 × 0.25) / 0.633, using
+    E003's D share of 36.7%. The larger one is the more cautious: a weaker cue.
+  - If that gives `long_gap_alive` ≥ 0.15 (a dead/alive ratio under ~1.7, close to the
+    untracked cue already in place), **drop E004 without implementing it**. It would add little
+    beyond the untracked cue and would double-count the same frames.
+- **Design** (if it goes ahead, the only change against E003): a binary cue "frame inside an
+  untracked run longer than `long_gap_s = 10` s", added to the alive/dead part of
+  `evidence.log_emissions` like the other `_binary` cues, known on every frame. It overlaps the
+  untracked cue on purpose: that cue says "the ball is lost", this one says "lost for long".
+- **Pre-set criterion for the real run:**
+  - **keep** if the D share stays within 30–42%, possessions ≥ 200 with a 10–20 s mean, and the
+    public window still passes (17 ± 3 possessions, macroF1 not below E003's 0.6825 by more than
+    0.01);
+  - **revert** if the D share leaves 30–42%, possessions fall below 200, or macroF1 drops more
+    than 0.01.
+  - Limitation, stated in advance: the full-match aggregates can show E004 is not broken, not
+    that it is better. If it passes, it is kept on the strength of the reasoning above.
+- **Commands for the human** (now, before any model change):
+  `.venv/bin/python tools/inspect_cues.py`; paste back table 4 only.
+- **Synthetic:** the generator never loses the ball for more than 10 s (table 4 on seed 0:
+  0.000 in every column), so synthetic runs cannot exercise this cue. A follow-up for
+  `make_synthetic.py`, with the walking-at-stoppages fix from E003.
