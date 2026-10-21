@@ -226,6 +226,38 @@ def test_no_slow_speed_ignores_the_players_speed():
     np.testing.assert_array_equal(walking, unknown)
 
 
+def test_gap_team_cue_only_on_untracked_frames():
+    players = [[[10, 10]]] * 4
+    ball = [[11, 10], [np.nan, np.nan], [np.nan, np.nan], [np.nan, np.nan]]
+    tracking = FakeTracking(players, ball, [A])
+    p_home = np.array([0.9, 0.9, 0.6, np.nan])        # confident H, weak H, unknown
+    with_cue = evidence.log_emissions(tracking, SPEC, evidence_params(), p_home=p_home)
+    without = evidence.log_emissions(tracking, SPEC, evidence_params())
+    shift = with_cue - without
+    np.testing.assert_array_equal(shift[[0, 3]], 0.0)  # ball seen; classifier unknown
+    assert shift[1, H] - shift[1, A] == pytest.approx(np.log(0.86 / 0.14))
+    assert shift[2, H] - shift[2, A] == pytest.approx(np.log(0.56 / 0.44))
+    assert shift[1, D] == pytest.approx(np.log(0.5))
+
+
+def test_gap_team_cue_favours_away_below_one_half():
+    tracking = FakeTracking([[[10, 10]]] * 4, [[np.nan, np.nan]] * 4, [H])
+    p_home = np.array([0.1, 0.4, 0.5, 0.5])
+    shift = (evidence.log_emissions(tracking, SPEC, evidence_params(), p_home=p_home)
+             - evidence.log_emissions(tracking, SPEC, evidence_params()))
+    assert shift[0, A] - shift[0, H] == pytest.approx(np.log(0.86 / 0.14))
+    assert shift[1, A] > shift[1, H]
+    np.testing.assert_array_equal(shift[2:], 0.0)     # exactly 0.5: no side favoured
+
+
+def test_gap_cue_off_ignores_p_home():
+    tracking = FakeTracking([[[10, 10]]] * 4, [[np.nan, np.nan]] * 4, [H])
+    off = evidence_params(gap_acc_strong=None)
+    np.testing.assert_array_equal(
+        evidence.log_emissions(tracking, SPEC, off, p_home=np.full(4, 0.9)),
+        evidence.log_emissions(tracking, SPEC, off))
+
+
 def test_weight_scales_everything():
     players = [[[10, 10]]] * 4
     ball = [[11, 10], [np.nan, np.nan], [50, -5], [50, -5]]

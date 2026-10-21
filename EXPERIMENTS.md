@@ -73,7 +73,7 @@ command and what to paste back.
 | E004 | 2026-10-21 | PR #13 | Long untracked-ball runs (> 10 s) as dead-ball evidence | drop: value rule gives alive rate 0.41 ≥ 0.15; not implemented |
 | E005a | 2026-10-21 | PR #17 | Masked-ball harness (yardstick for gaps) | measured: E003 catches 11.5% of side changes in gaps |
 | E005b | 2026-10-21 | PR #19 | Team-from-movement classifier, half-to-half CV | gate PASS: (b) 0.789, (d) 0.949 |
-| E005c | — | not yet | Classifier probabilities as gap-only emissions | design proposed |
+| E005c | 2026-10-21 | this PR | Classifier probabilities as gap-only emissions | built; awaiting real run |
 | E006 | — | not yet | Visible-ball possession-change rules | planned |
 | E007 | — | not yet | Restart detection and attribution from player configuration | planned |
 | E008 | — | not yet | Metrica sample-data harness (development aid) | planned |
@@ -602,7 +602,7 @@ command and what to paste back.
   errors (it is itself ~86% right), not leakage. The level matches the literature (81–86%).
 - **Decision:** pass; E005c is designed from these numbers.
 
-#### E005c — Classifier probabilities as gap-only emissions (design proposed; awaiting approval)
+#### E005c — Classifier probabilities as gap-only emissions (design approved in PR #20; implemented)
 
 - **Change** (the only one against E003): a second team cue on frames where the ball is
   untracked, from E005b's classifier. Frames with the ball seen keep the nearest-player cue
@@ -637,6 +637,30 @@ command and what to paste back.
 - **Tests (synthetic):** the cue is zero on frames with the ball seen; agreeing raises the
   favoured side by the stated amount; `None` gives E003's labels; the pipeline output is
   byte-identical across two runs.
-- **Commands for the human** (after merge): `run_pipeline.py --out evaluation/results/hm_hmm_e005c.csv`,
-  `run_evaluation.py --no-detail`, `tools/masked_harness.py --gt …`, `make reproduce`; paste back
-  the JSON summary, the board, the harness output and the reproduce line.
+- **Implemented as designed** (`evidence._add_gap_team`, `pipeline._hmm`, `config.py`): values 0.86 /
+  0.56 / confidence 0.7. p = 0.5 exactly favours no side (no cue). 3 new tests; 119 pass.
+  `synthetic_eval.py` now compares against `hmm no-gap (E003)`.
+- **Synthetic** (5 full bundles; correctness only):
+
+  | variant | spellF1 | macroF1 | poss ratio | wrong side (alive frames) |
+  |---|---|---|---|---|
+  | E003 (no gap cue) | 0.458 | 0.688 | 0.70 | 0.100 |
+  | E005c, real-data values (0.86 / 0.56) | 0.429 | 0.650 | 0.96 | 0.120 |
+  | E005c, generator rates (0.78 / 0.55) | 0.446 | 0.662 | 0.90 | 0.112 |
+
+  Possessions move to the true count, but frame accuracy falls. The reason is measurable: on
+  synthetic untracked alive frames, carrying the last side forward (E003) is right 0.80–0.92 of
+  the time at every gap length (bundles 0–2: 0–1 s, 1–3 s, 3+ s), the classifier only ~0.70. The
+  generator's gaps are short (median 0.7 s) and its shape signal weak, so a gap cue can only add
+  errors there. The real match is the opposite regime: gaps in play have a median of 7.2 s, and
+  on E005a's hidden frames carry-forward keeps the reference's side only ~0.57 of the time
+  (1 − wrong_side 0.264 − to_dead 0.167), while the classifier gets 0.80 on the same kind of
+  frames (E005b row (c)). Values stay as specified; the real run decides.
+- **Commands for the human** (after merge; the harness now runs E005c six times, ~10–15 min):
+  1. `.venv/bin/python run_pipeline.py --out evaluation/results/hm_hmm_e005c.csv`
+  2. `.venv/bin/python evaluation/run_evaluation.py --no-detail`
+  3. `.venv/bin/python tools/masked_harness.py --gt evaluation/gt/BAR-ATH_possession_gt_public.csv`
+  4. `make reproduce`
+
+  Paste back the JSON summary, the board, the harness output and the reproduce line.
+- **Real data:** pending. The pre-set criterion above decides.
