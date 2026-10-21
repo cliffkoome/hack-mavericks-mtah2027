@@ -74,7 +74,7 @@ command and what to paste back.
 | E005a | 2026-10-21 | PR #17 | Masked-ball harness (yardstick for gaps) | measured: E003 catches 11.5% of side changes in gaps |
 | E005b | 2026-10-21 | PR #19 | Team-from-movement classifier, half-to-half CV | gate PASS: (b) 0.789, (d) 0.949 |
 | E005c | 2026-10-21 | PR #21 | Classifier probabilities as gap-only emissions | keep: 275 -> 308 possessions; gap change recall 0.115 -> 0.284 |
-| E006 | 2026-10-21 | this PR | Last-touch team on seen-ball frames (touch, duel rules) | E006a tool built; awaiting real measurement |
+| E006 | 2026-10-21 | PR #24 | Last-touch team on seen-ball frames (touch, duel rules) | E006a: detector found ~1 touch on real data; diagnosing |
 | E007 | — | not yet | Restart detection and attribution from player configuration | planned |
 | E008 | — | not yet | Metrica sample-data harness (development aid) | planned |
 
@@ -765,4 +765,27 @@ command and what to paste back.
 - **Command for the human** (after merge; a few minutes):
   `.venv/bin/python tools/inspect_touches.py --gt evaluation/gt/BAR-ATH_possession_gt_public.csv`;
   paste back the whole output.
-- **Real data:** pending.
+- **Real data, first run** (human-run): τ 9.35 m/s; 0.015 touches per minute of play (about one
+  in the match); coverage 0.004; no public frames with a last-touch side. Gate: FAIL.
+- **Reading:** this is a broken detector, not evidence about the idea. A football match has
+  thousands of touches; one detected touch means a rule is not firing on this tracking. Suspects,
+  all label-free to check: (1) reach 1 m is too short for automatic body-centre positions; (2) the
+  ball is lost at the feet, so the ±4 frames a touch needs are rarely all seen; (3) an irregular
+  ball track (held positions, steps) makes τ meaningless.
+- **Not done:** reading the pre-set gate as a verdict on E006. The gate assumed a detector that
+  finds touches; it is kept unchanged for the calibrated comparison once the detector works.
+- **Diagnostics added** (`inspect_touches.py` table 0, aggregates only): share of seen frames with
+  Δv computable and in seen runs ≥ 9 frames; share of zero-movement steps and step length
+  quantiles; share of seen frames and Δv quantiles by nearest-player distance (< 1, 1–2, 2–5,
+  > 5 m); Δv peaks above τ per minute and where their nearest player sits.
+- **Rule for any detector fix, fixed now:** a change must follow from table 0 alone (label-free),
+  be stated here before the next run, and stay one change. Candidate rules, chosen by which
+  suspect table 0 confirms:
+  - (1) peaks above τ exist but their nearest player sits mostly beyond 1 m → reach = the median
+    nearest-player distance at Δv peaks above τ, capped at 2 m;
+  - (2) Δv is rarely computable near players → compute Δv over ±2 frames instead of ±3;
+  - (3) many zero-movement steps → a held-position track; Δv-based touches are dropped and E006
+    stops.
+  The accuracy gate (last touch ≥ nearest + 0.03, coverage ≥ 0.5) is unchanged and still decides.
+- **Command for the human** (after merge): the same command as before; paste back the whole
+  output, now with table 0.
