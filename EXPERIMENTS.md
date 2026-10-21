@@ -27,7 +27,7 @@ versions without a leaderboard, and it becomes the backbone of the technical doc
 | E001 | 2026-10-20 | PR #5 | 3-state Viterbi decoder instead of the window vote | keep: default model since PR #5 |
 | E002 | 2026-10-20 | PR #8 | Recalibrate the evidence cues against measured rates | drop: D share 45% -> 8%; reverted in PR #9 |
 | E003 | 2026-10-21 | PR #11 | Player-movement cue (players walk at stoppages) | keep: D share 45.3% -> 36.7% |
-| E004 | — | not yet | Long untracked-ball runs (> 10 s) as dead-ball evidence | planned: measure first |
+| E004 | 2026-10-21 | PR #13 | Long untracked-ball runs (> 10 s) as dead-ball evidence | drop: value rule gives alive rate 0.41 ≥ 0.15; not implemented |
 
 ## Entry template
 
@@ -281,11 +281,10 @@ versions without a leaderboard, and it becomes the backbone of the technical doc
 - **Follow-ups:** make the generator's players walk at stoppages (a `make_synthetic.py` change,
   kept out of this experiment so E003 stays a single change).
 
-### E004 — Long untracked-ball runs as dead-ball evidence (planned; measure first)
+### E004 — Long untracked-ball runs as dead-ball evidence (dropped before implementation)
 
-- **Status:** planned. Only the diagnostic is implemented (`inspect_cues.py` table 4). The values
-  are not set yet: they depend on a full-match measurement, and the rule that sets them is fixed
-  here, before that measurement.
+- **Status:** dropped by its pre-set rule after the full-match measurement (below). Only the
+  diagnostic was implemented (`inspect_cues.py` table 4, PR #13); the model is unchanged (E003).
 - **Hypothesis:** the ball goes untracked for long stretches mostly at long stoppages (goals,
   injuries, substitutions, balls into the stands), and those may be where the D share comes from
   after E003. A run's *length* says more than any single untracked frame, which by itself barely
@@ -325,3 +324,31 @@ versions without a leaderboard, and it becomes the backbone of the technical doc
 - **Synthetic:** the generator never loses the ball for more than 10 s (table 4 on seed 0:
   0.000 in every column), so synthetic runs cannot exercise this cue. A follow-up for
   `make_synthetic.py`, with the walking-at-stoppages fix from E003.
+- **Full-match measurement** (table 4, human-run, 155,923 decoded frames; aggregates only):
+
+  | cue | all | pred H/A (100,534) | pred D (55,389) |
+  |---|---|---|---|
+  | ball not tracked | 0.411 | 0.172 | 0.844 |
+  | untracked, run > 1 s | 0.411 | 0.172 | 0.844 |
+  | untracked, run > 3 s | 0.411 | 0.172 | 0.844 |
+  | untracked, run > 10 s | 0.351 | 0.120 | 0.770 |
+  | untracked > 10 s & slow | 0.250 | 0.001 | 0.703 |
+
+- **Applying the rule:** (a) pred H/A rate 0.120; (b) mixture (0.351 − 0.367 × 0.25) / 0.633 =
+  0.410. The larger is 0.41 ≥ 0.15, so E004 is dropped. A cue at 0.25 dead vs 0.41 alive would
+  point *away* from D.
+- **What the rule's input hides:** estimate (b) trusts the public dead rate 0.25. If long runs
+  covered far more of the match's real stoppages than that, the alive rate would be lower. The
+  measurement cannot tell these apart without labels, and the rule was written to be cautious
+  for exactly this reason. Not revisited.
+- **What the measurement shows instead** (for later experiments):
+  - On the full match, as on the public window, the ball is never lost briefly: every untracked
+    frame is in a run over 3 s, and 85% of them in runs over 10 s. The tracker loses the ball in
+    long blocks, not flickers.
+  - E003's D is now essentially "ball lost for > 10 s while the players walk" (0.703 of pred D,
+    0.001 of pred H/A). Movement, not the ball, decides D inside long gaps.
+  - **17.2% of predicted-alive frames have no ball at all**, so no team cue: about 17,000 frames
+    whose side comes only from the decoder carrying the last side through the gap. A possession
+    change inside a gap is invisible today. That is approach-plan step 4 (a team model on player
+    configuration for long gaps) and probably the largest remaining source of error.
+- **Decision:** drop, by the pre-set rule. No code change to the model.
