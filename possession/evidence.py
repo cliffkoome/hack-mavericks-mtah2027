@@ -10,6 +10,9 @@ Each frame contributes independent cues, each a probability with a plain meaning
             capped at 1 s (E002), dead stretches lose nearly all their evidence too.
   outside   whether a seen ball is off the pitch (rare in play, common at a stoppage)
   still     whether a seen ball has stopped moving (a restart spot, or a ball waiting for one)
+  slow      whether the players are walking (median speed over +/- 1 s). Players stay tracked
+            when the ball does not, so this also argues *against* D in open play with the ball
+            lost, where the visible cue alone over-calls it (E003).
 
 The values in config.py come from documented facts about the tracking (DATA.md) and football
 priors, never from fitting the public window. Consecutive frames are far from independent, so
@@ -54,6 +57,10 @@ def log_emissions(tracking, spec, params):
         + _binary(speed < params["still_speed"], params["still_alive"], params["still_dead"],
                   where=~np.isnan(speed))
     )
+    if params["slow_speed"] is not None:
+        walking = features.players_median_speed(tracking, spec.fps)
+        alive_dead += _binary(walking < params["slow_speed"], params["slow_alive"],
+                              params["slow_dead"], where=~np.isnan(walking))
     out[:, H] += alive_dead[:, 0]
     out[:, A] += alive_dead[:, 0]
     out[:, D] += alive_dead[:, 1]
