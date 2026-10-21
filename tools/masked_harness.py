@@ -29,8 +29,9 @@ import possession_metrics as pm  # noqa: E402
 
 # Params
 SEEDS = (0, 1, 2, 3, 4)
-COLUMNS = ("change_recall", "mean_iou", "agreement", "spell_f1", "n_possessions", "n_changes",
-           "n_touched", "n_hidden")
+RATES = ("change_recall", "mean_iou", "agreement", "to_dead", "wrong_side", "spell_f1")
+COUNTS = ("n_possessions", "n_changes", "n_touched", "n_hidden")
+COLUMNS = RATES + COUNTS
 
 
 def run(tracking, spec, params, gt, seeds):
@@ -70,12 +71,13 @@ def summarise(rows):
 
 
 def print_table(title, named_rows):
+    """One line per column, one column per named run: narrow enough for any terminal."""
     print(title)
-    print("{:<18}".format("") + "".join("{:>18}".format(key) for key in COLUMNS))
-    for name, stats in named_rows:
-        print("{:<18}".format(name) + "".join(
-            "{:>18}".format("{:.3f} ± {:.3f}".format(*stats[key]) if key in COLUMNS[:4]
-                            else "{:.0f} ± {:.0f}".format(*stats[key])) for key in COLUMNS))
+    print("{:<16}".format("") + "".join("{:>17}".format(name) for name, _ in named_rows))
+    for key in COLUMNS:
+        pattern = "{:.3f} ± {:.3f}" if key in RATES else "{:.0f} ± {:.0f}"
+        print("{:<16}".format(key) + "".join(
+            "{:>17}".format(pattern.format(*stats[key])) for _, stats in named_rows))
 
 
 def main():

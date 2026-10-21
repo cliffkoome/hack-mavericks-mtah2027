@@ -16,7 +16,7 @@ import dataclasses
 
 import numpy as np
 
-from possession import H, A, X, features
+from possession import H, A, D, X, features
 import possession_metrics as pm
 
 # Params
@@ -112,6 +112,8 @@ def compare(truth, codes, hidden, spec, tol):
                    (one-to-one, matched on the destination side, within tol: the scorer's rule)
     mean_iou       truth possessions touching a hidden frame: mean best same-side IoU in codes
     agreement      share of hidden frames where codes equals truth
+    to_dead        share of hidden frames alive in truth that codes calls D
+    wrong_side     share of hidden frames alive in truth that codes gives to the other side
     spell_f1       the official spellF1 of codes against truth, over all graded truth frames
     """
     runs = pm.valid_runs(truth)
@@ -123,6 +125,7 @@ def compare(truth, codes, hidden, spec, tol):
 
     truth_spells = pm.possession_spells(truth, runs)
     touched = [i for i, (start, stop, _) in enumerate(truth_spells) if hidden[start:stop].any()]
+    alive = hidden & ((truth == H) | (truth == A))
     best = np.zeros(len(truth_spells))
     for iou, i, _ in pm.spell_overlaps(truth_spells, pm.possession_spells(filled, runs)):
         best[i] = max(best[i], iou)
@@ -133,6 +136,9 @@ def compare(truth, codes, hidden, spec, tol):
         "n_touched": len(touched),
         "agreement": float(np.mean(codes[hidden] == truth[hidden])) if hidden.any()
         else float("nan"),
+        "to_dead": float(np.mean(codes[alive] == D)) if alive.any() else float("nan"),
+        "wrong_side": float(np.mean((codes[alive] <= A) & (codes[alive] != truth[alive])))
+        if alive.any() else float("nan"),
         "n_hidden": int(hidden.sum()),
         "n_possessions": pm.possession_stats(filled, runs)["n_spells"],
         "spell_f1": pm.spell_scores(truth, filled, runs)["mean_f1"],
