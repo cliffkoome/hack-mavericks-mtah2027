@@ -1,19 +1,22 @@
-"""Touch detection and the last-touch side (E006a): label-free rates, plus a calibration check.
+"""Last-control (E009a, default) or last-touch (E006a) side: label-free rates and a calibration.
 
     python tools/inspect_touches.py --gt evaluation/gt/BAR-ATH_possession_gt_public.csv
     python tools/inspect_touches.py --data-dir .synthetic/eval/full-seed0 \
         --gt .synthetic/eval/full-seed0/synthetic_possession_gt.csv
 
-0. detector diagnostics: why touches are or are not found (seen runs, step lengths, dv by
-   nearest-player distance, where the dv peaks above tau sit).
+--cue control (default, E009): a side holds the ball with its player within near_m and no
+opponent; 10+ held frames are control. --cue touch (E006, stopped) adds table 0.
+
+0. touch only -- detector diagnostics: why touches are or are not found (seen runs, step
+   lengths, dv by nearest-player distance, where the dv peaks above tau sit).
 1. full match, no labels: the touch threshold tau (free-flight rule, possession/touches.py),
    touches per minute of play, duel share, coverage of the last-touch side on seen alive frames
    (alive and stoppages from the current pipeline, config.py), agreement with the nearest player.
 2. --gt: on truth-alive seen frames where the last-touch side is known, accuracy of the
    last-touch side and of the nearest-player side on the same frames, by nearest distance.
 
-Then the pre-set gate (EXPERIMENTS.md, E006). Every number is a rate or count over many frames:
-safe to paste back.
+Then the pre-set gate (EXPERIMENTS.md, E006 and E009: the same). Every number is a rate or count
+over many frames: safe to paste back.
 """
 
 import argparse
@@ -71,32 +74,42 @@ def diagnostics(tracking, spec, decoded, distance, dv, tau):
     return out
 
 
-def measure(tracking, spec, params, gt):
+def measure(tracking, spec, params, gt, cue):
+    """(diagnostics or None, label-free match rates, calibration rows or None) for one cue."""
     reference = pipeline.label(tracking, spec, params)
     decoded = masking.decoded_mask(spec)
     visible = features.ball_visible(tracking)
     team, distance = features.nearest_player(tracking)
     alive = decoded & ((reference == H) | (reference == A))
-
-    dv = touches.velocity_change(tracking.ball, spec.fps)
-    tau = touches.free_flight_threshold(dv, distance, decoded & visible)
-    diag = diagnostics(tracking, spec, decoded, distance, dv, tau)
-    frames, sides = touches.detect(tracking, dv, tau)
-    side = touches.last_touch(spec.n_frames, frames, sides, visible, reference == D, spec.fps)
-
-    in_play = alive[frames]
     minutes = alive.sum() / spec.fps / 60.0
     seen_alive = alive & visible
+    diag = None
+
+    if cue == "touch":
+        dv = touches.velocity_change(tracking.ball, spec.fps)
+        tau = touches.free_flight_threshold(dv, distance, decoded & visible)
+        diag = diagnostics(tracking, spec, decoded, distance, dv, tau)
+        frames, sides = touches.detect(tracking, dv, tau)
+        in_play = alive[frames]
+        match = {"tau (m/s)": tau,
+                 "touches per minute of play": in_play.sum() / minutes,
+                 "  attributed per minute": np.sum(in_play & (sides >= 0)) / minutes,
+                 "  duel share": float(np.mean(sides[in_play] < 0)) if in_play.any()
+                 else float("nan")}
+    else:
+        holder, duel = touches.held(tracking, params["evidence"]["near_m"])
+        frames, sides = touches.controls(holder)
+        match = {"controls per minute of play": alive[frames].sum() / minutes,
+                 "held share of seen alive frames": float(np.mean(holder[seen_alive] >= 0)),
+                 "duel share of seen alive frames": float(np.mean(duel[seen_alive]))}
+    side = touches.last_touch(spec.n_frames, frames, sides, visible, reference == D, spec.fps)
     known = seen_alive & (side >= 0)
-    match = {
-        "tau (m/s)": tau,
-        "touches per minute of play": in_play.sum() / minutes,
-        "  attributed per minute": np.sum(in_play & (sides >= 0)) / minutes,
-        "  duel share": float(np.mean(sides[in_play] < 0)) if in_play.any() else float("nan"),
+    match.update({
         "coverage of seen alive frames": known.sum() / max(seen_alive.sum(), 1),
-        "agreement with nearest player": float(np.mean(side[known] == team[known])),
+        "agreement with nearest player": float(np.mean(side[known] == team[known]))
+        if known.any() else float("nan"),
         "seen alive frames": int(seen_alive.sum()),
-    }
+    })
     calibration = None
     if gt is not None:
         truth_alive = (gt == H) | (gt == A)
@@ -108,25 +121,30 @@ def measure(tracking, spec, params, gt):
             calibration.append((name, n,
                                 float(np.mean(side[where] == gt[where])) if n else float("nan"),
                                 float(np.mean(team[where] == gt[where])) if n else float("nan")))
-    return match, calibration, diag
+    return diag, match, calibration
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--data-dir")
     parser.add_argument("--gt", help="ground-truth CSV for table 2 (public window or synthetic)")
+    parser.add_argument("--cue", choices=("control", "touch"), default="control",
+                        help="control: E009, proximity (default); touch: E006, velocity (stopped)")
     args = parser.parse_args()
 
     spec = spec_module.load(args.data_dir)
     tracking = atd.load(spec, args.data_dir)
     gt = pm.label_codes(pm.read_label_csv(args.gt)) if args.gt else None
-    match, calibration, diag = measure(tracking, spec, PARAMS, gt)
+    diag, match, calibration = measure(tracking, spec, PARAMS, gt, args.cue)
+    label = "last control" if args.cue == "control" else "last touch"
 
-    print("0. detector diagnostics, label-free (decoded frames)")
-    for key, value in diag:
-        print("  {:<48} {}".format(key, value if isinstance(value, (int, str))
-                                   else "{:.3f}".format(value)))
-    print()
+    print("cue: {}".format(args.cue))
+    if diag is not None:
+        print("0. detector diagnostics, label-free (decoded frames)")
+        for key, value in diag:
+            print("  {:<48} {}".format(key, value if isinstance(value, (int, str))
+                                       else "{:.3f}".format(value)))
+        print()
 
     print("1. full match, label-free (alive/stoppage from the current pipeline)")
     for key, value in match.items():
@@ -134,16 +152,16 @@ def main():
         print("  {:<34} {}".format(key, shown))
     if calibration is None:
         return 0
-    print("\n2. truth-alive seen frames with a last-touch side: accuracy against the truth")
-    print("  {:<10} {:>7} {:>11} {:>15}".format("nearest", "n", "last touch", "nearest player"))
+    print("\n2. truth-alive seen frames with a {} side: accuracy against the truth".format(label))
+    print("  {:<10} {:>7} {:>13} {:>15}".format("nearest", "n", label, "nearest player"))
     for name, n, last, nearest in calibration:
-        print("  {:<10} {:>7} {:>11.3f} {:>15.3f}".format(name, n, last, nearest))
+        print("  {:<10} {:>7} {:>13.3f} {:>15.3f}".format(name, n, last, nearest))
     _, _, last, nearest = calibration[0]
     coverage = match["coverage of seen alive frames"]
     passed = last - nearest >= GATE_MARGIN and coverage >= GATE_COVERAGE
-    print("\ngate: last touch {:.3f} - nearest {:.3f} = {:+.3f} >= {:.2f}, "
-          "coverage {:.3f} >= {:.2f} -> {}".format(last, nearest, last - nearest, GATE_MARGIN,
-                                                   coverage, GATE_COVERAGE,
+    print("\ngate: {} {:.3f} - nearest {:.3f} = {:+.3f} >= {:.2f}, "
+          "coverage {:.3f} >= {:.2f} -> {}".format(label, last, nearest, last - nearest,
+                                                   GATE_MARGIN, coverage, GATE_COVERAGE,
                                                    "PASS" if passed else "FAIL"))
     return 0
 

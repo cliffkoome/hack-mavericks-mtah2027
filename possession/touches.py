@@ -1,10 +1,15 @@
-"""Ball touches and the side of the last touch, from the seen ball (E006).
+"""Ball touches or control, and the side that last had the ball, from the seen ball (E006, E009).
 
 The ground truth names an owner, and the owner plausibly stays with the side of the last
 controlled touch while the ball travels (Vidal-Codina et al. 2022; Link & Hoernig 2017). A touch
 shows as a sharp change in the ball's velocity next to a player. Our ball is automatic tracking
 with jitter, so the papers' thresholds do not transfer: the threshold here is the velocity change
 the ball shows in free flight (no player within FREE_FLIGHT_M), measured on the match itself.
+
+E006 (stopped): on this tracking a touch is no sharper than free flight, so touches are hardly
+ever found. E009 uses proximity instead: a side *holds* the ball when its player is within reach
+and no opponent is, and *controls* it after more than CONTROL_FRAMES held frames in a row. last_touch()
+carries either one forward.
 
 Rules: a touch needs a player within reach; with players of both sides within reach it is a duel
 and attributes nothing. The last touch's side carries forward while the ball stays seen; it resets
@@ -22,6 +27,8 @@ REACH_M = 1.0            # possession zone (Vidal-Codina et al.)
 FREE_FLIGHT_M = 5.0      # nearest player farther than this: the ball is in free flight
 FREE_FLIGHT_PCT = 99.0   # a touch must beat this percentile of the free-flight velocity change
 RESET_GAP_S = 1.0        # an untracked run longer than this forgets the last touch
+CONTROL_FRAMES = 10      # held longer than this = control: a >= 10 m/s fly-by crosses a 2 m disc
+                         # in at most 10 frames
 NOBODY = -1
 
 
@@ -102,3 +109,28 @@ def last_touch(n, frames, sides, visible, stoppage, fps):
         out[t] = side
     out[~visible] = NOBODY
     return out
+
+
+def held(tracking, reach_m):
+    """(side, duel) per frame: H or A where only that side has a player within reach_m of the seen
+    ball, NOBODY otherwise; duel where both sides do."""
+    gap = tracking.players - tracking.ball[:, None, :]
+    with np.errstate(invalid="ignore"):
+        near = np.hypot(gap[..., 0], gap[..., 1]) < reach_m
+    home = (near & (tracking.slot_team == H)).any(axis=1)
+    away = (near & (tracking.slot_team == A)).any(axis=1)
+    side = np.where(home & ~away, H, np.where(away & ~home, A, NOBODY)).astype(np.int8)
+    return side, home & away
+
+
+def controls(side, max_fly_by=CONTROL_FRAMES):
+    """(frames, sides): the first frame of every run of one side holding for > max_fly_by."""
+    frames, sides = [], []
+    for team in (H, A):
+        for start, stop in _runs(side == team):
+            if stop - start > max_fly_by:
+                frames.append(start)
+                sides.append(team)
+    order = np.argsort(frames, kind="stable")
+    return (np.asarray(frames, dtype=np.int64)[order],
+            np.asarray(sides, dtype=np.int8)[order])

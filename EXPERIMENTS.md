@@ -77,7 +77,7 @@ command and what to paste back.
 | E006 | 2026-10-21 | PR #24, #25 | Last-touch team on seen-ball frames (touch, duel rules) | stop: Δv touches do not stand out on this ball track |
 | E007 | — | not yet | Restart detection and attribution from player configuration | planned |
 | E008 | — | not yet | Metrica sample-data harness (development aid) | planned |
-| E009 | — | not yet | Last-control side on seen-ball frames (proximity, no velocity) | design proposed: measure first |
+| E009 | 2026-10-21 | this PR | Last-control side on seen-ball frames (proximity, no velocity) | E009a built; awaiting real measurement |
 
 ## Entry template
 
@@ -819,7 +819,7 @@ command and what to paste back.
   2 m. A proximity-based "last control" cue, needing no velocity, is a separate experiment
   if chosen (proposed in the next entry only on the human's go-ahead).
 
-### E009 — Last-control side on seen-ball frames (design proposed; measure first)
+### E009 — Last-control side on seen-ball frames (design approved in PR #27; E009a built)
 
 - **Status:** design proposed for approval, chosen by the human after E006 stopped. Nothing
   implemented.
@@ -832,10 +832,12 @@ command and what to paste back.
 - **Control, by rule (no new fitted values):**
   - a frame is *held* by side S when S's nearest player is within `near_m` (2 m, existing config)
     and no opponent is within `near_m`. Both sides within 2 m is a duel: nobody holds it;
-  - *control* needs at least K = 10 consecutive held frames (0.4 s) by the same side. Reason: a
-    ball passing a player at pass speed (≥ 10 m/s, 0.4 m per frame) crosses a 2 m-radius disc in
-    at most 10 frames even through its centre. So K = 10 excludes every fly-by at pass speed,
-    while a reception or a dribble keeps the ball near a player for longer.
+  - *control* needs more than K = 10 consecutive held frames (> 0.4 s) by the same side. Reason:
+    a ball passing a player at pass speed (≥ 10 m/s, 0.4 m per frame) crosses a 2 m-radius disc
+    in at most 10 frames even through its centre. So requiring more than 10 excludes every fly-by
+    at pass speed, while a reception or a dribble keeps the ball near a player for longer.
+    (Corrected during implementation, before any real run: the design first said "at least 10",
+    which lets a fly-by through the centre count; the fly-by test caught it.)
 - **Last-control side:** set from the start of each controlled run, carried forward while the ball
   stays seen; reset after an untracked run longer than 1 s (gaps belong to E005c's cue) and on
   every stoppage (pass-1 labels). A duel keeps the previous side. Same carry-forward as E006
@@ -855,3 +857,21 @@ command and what to paste back.
 - **Tests:** held, duel and control runs on hand-built frames (9 held frames are not control, 10
   are); a fly-by at 10 m/s through a player's disc is never control; carry-forward and resets as
   in E006.
+- **E009a implemented** (`touches.held`, `touches.controls`, reusing `touches.last_touch`;
+  `tools/inspect_touches.py --cue control`, now the default; 4 new tests, 131 pass).
+- **Synthetic** (5 full bundles; correctness only):
+
+  | bundle | controls / min | duel share | coverage | last control | nearest | 2–5 m: control vs nearest | > 5 m | gate |
+  |---|---|---|---|---|---|---|---|---|
+  | 0 | 10.8 | 0.171 | 0.754 | 0.841 | 0.788 | 0.724 vs 0.591 | 0.818 vs 0.589 | PASS |
+  | 1 | 10.8 | 0.181 | 0.755 | 0.870 | 0.797 | 0.782 vs 0.613 | 0.850 vs 0.602 | PASS |
+  | 2 | 10.7 | 0.168 | 0.753 | 0.853 | 0.797 | 0.778 vs 0.608 | 0.844 vs 0.604 | PASS |
+  | 3 | 10.1 | 0.179 | 0.745 | 0.843 | 0.801 | 0.765 vs 0.603 | 0.810 vs 0.620 | PASS |
+  | 4 | 10.6 | 0.177 | 0.745 | 0.865 | 0.806 | 0.798 vs 0.621 | 0.861 vs 0.616 | PASS |
+
+  The gain is where intended (2–5 m and > 5 m); within 2 m the two cues agree. This shows the
+  code does what the design says, not the size of the real effect.
+- **Command for the human** (after merge; a few minutes):
+  `.venv/bin/python tools/inspect_touches.py --gt evaluation/gt/BAR-ATH_possession_gt_public.csv`;
+  paste back the whole output.
+- **Real data:** pending. The gate decides whether E009b is built.
