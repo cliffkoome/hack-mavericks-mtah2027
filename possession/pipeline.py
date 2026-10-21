@@ -1,7 +1,6 @@
 """The whole chain from data bundle to labels. run_pipeline.py is a thin CLI over build()."""
 
-from possession import D, atd, decoder, evidence, features, rules, smoothing, team_model
-from possession import touches
+from possession import atd, decoder, evidence, features, rules, smoothing, team_model
 from possession import spec as spec_module
 
 MODELS = ("vote", "hmm")
@@ -26,23 +25,14 @@ def label(tracking, spec, params):
 
 
 def _hmm(tracking, spec, params):
-    """Decoder codes. With the gap team cue (E005c) or the control cue (E009) on, two passes:
-    pass 1 decodes without them. Its labels train the team-from-movement classifier half-to-half
-    (each half predicted by the other half's model, as validated in E005b), and its stoppages
-    reset the last-control side. Pass 2 decodes with the cues added."""
+    """Decoder codes. With the gap team cue on (E005c), two passes: pass 1 without it labels the
+    match; those labels train the team-from-movement classifier half-to-half (each half predicted
+    by the other half's model, as validated in E005b); pass 2 decodes with the cue added."""
     ev = params["evidence"]
     log_emit = evidence.log_emissions(tracking, spec, ev)
     first = decoder.decode_match(log_emit, spec, params["decoder"])
-    if ev["gap_acc_strong"] is None and ev["control_acc"] is None:
+    if ev["gap_acc_strong"] is None:
         return first
-    labels = rules.finalize(first, spec)
-    p_home = control = None
-    if ev["gap_acc_strong"] is not None:
-        p_home, _ = team_model.cross_half(tracking, spec, labels, ev["near_m"])
-    if ev["control_acc"] is not None:
-        holder, _ = touches.held(tracking, ev["near_m"])
-        frames, sides = touches.controls(holder)
-        control = touches.last_touch(spec.n_frames, frames, sides,
-                                     features.ball_visible(tracking), labels == D, spec.fps)
-    log_emit = evidence.log_emissions(tracking, spec, ev, p_home=p_home, control=control)
+    p_home, _ = team_model.cross_half(tracking, spec, rules.finalize(first, spec), ev["near_m"])
+    log_emit = evidence.log_emissions(tracking, spec, ev, p_home=p_home)
     return decoder.decode_match(log_emit, spec, params["decoder"])

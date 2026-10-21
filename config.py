@@ -52,10 +52,6 @@ PARAMS = {
         "gap_conf": 0.7,            # p >= this or <= 1 - this is a confident call
         "gap_acc_strong": 0.86,     # P(classifier right | confident); 0.861; None = off (E003)
         "gap_acc_weak": 0.56,       # same, not confident; 0.564 measured
-        # E009: on seen-ball frames, the side last in control (touches.held/controls: own player
-        # within near_m, no opponent, > 10 frames) replaces the nearest-player cue where known.
-        # Public measured rate, rounded (EXPERIMENTS.md, E009a).
-        "control_acc": 0.87,        # P(last-control side is right); 0.865 measured; None = off
         "weight": 0.2,              # evidence tempering: ~1 independent reading per 5 frames
     },
 }
