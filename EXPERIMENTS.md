@@ -72,7 +72,7 @@ command and what to paste back.
 | E003 | 2026-10-21 | PR #11 | Player-movement cue (players walk at stoppages) | keep: D share 45.3% -> 36.7% |
 | E004 | 2026-10-21 | PR #13 | Long untracked-ball runs (> 10 s) as dead-ball evidence | drop: value rule gives alive rate 0.41 ≥ 0.15; not implemented |
 | E005a | 2026-10-21 | PR #17 | Masked-ball harness (yardstick for gaps) | measured: E003 catches 11.5% of side changes in gaps |
-| E005b | — | not yet | Team-from-movement classifier, half-to-half CV | design proposed |
+| E005b | 2026-10-21 | this PR | Team-from-movement classifier, half-to-half CV | built; awaiting real check |
 | E005c | — | not yet | Classifier probabilities as gap-only emissions | planned |
 | E006 | — | not yet | Visible-ball possession-change rules | planned |
 | E007 | — | not yet | Restart detection and attribution from player configuration | planned |
@@ -513,8 +513,12 @@ command and what to paste back.
   "wrong side". Added `to_dead` and `wrong_side` to `compare()` (PR after #17); one rerun answers it,
   and E005b's go-ahead depends on it (below).
 - **Decision:** none; a measuring tool. These numbers are the baseline E005c must beat.
+- **Split rerun** (human-run, same masking, vs reference): `to_dead` 0.167 ± 0.036,
+  `wrong_side` 0.264 ± 0.061 (together 0.431 = 1 − agreement 0.581, as they must be). Wrong side
+  dominates, so E005b goes ahead by its pre-set condition. Called-dead-in-gaps is the next loss
+  after E005, about 0.17 of hidden alive frames: a candidate after E005c.
 
-#### E005b — Team-from-movement classifier (design proposed; awaiting approval)
+#### E005b — Team-from-movement classifier (design approved in PR #18; implemented)
 
 - **Go-ahead condition, fixed now:** proceed if the E005a rerun shows `wrong_side` ≥ `to_dead` on
   hidden frames (the loss is mostly the team, which E005b addresses). If `to_dead` dominates, stop
@@ -555,6 +559,29 @@ command and what to paste back.
   cross-validation never trains on the predicted half.
 - **Not doing:** a pre-trained model or weights in the repo (it is refit from the bundle on each
   run); feature selection or hyperparameter search.
+- **Implemented as designed** (`possession/team_model.py`, `tools/team_model_check.py`,
+  `tests/test_team_model.py`, 10 tests; 116 pass). The pipeline does not use it yet: E005c will.
+  Details made concrete: "deepest player" is per frame (usually the keeper); pressing distance
+  uses the team's outfield players against every opponent; the 0–5 / 5–15 / 15+ s bands in (c)
+  use the length of each contiguous hidden stretch. Dependencies pinned in `requirements.txt`:
+  scikit-learn 1.5.2, scipy 1.18.1, joblib 1.6.0, threadpoolctl 3.7.0.
+- **Synthetic** (5 full bundles; correctness only):
+
+  | bundle | (a) training-type | (b) all reference-alive | (d) truth-alive, untracked | confident share (b) |
+  |---|---|---|---|---|
+  | 0 | 0.720 | 0.666 | 0.705 | 0.56 |
+  | 1 | 0.737 | 0.680 | 0.705 | 0.57 |
+  | 2 | 0.743 | 0.693 | 0.702 | 0.61 |
+  | 3 | 0.693 | 0.654 | 0.660 | 0.61 |
+  | 4 | 0.719 | 0.667 | 0.687 | 0.51 |
+
+  Stable across bundles; every bundle passes the gate. Confident calls (p ≥ 0.7 or ≤ 0.3) are
+  right ~75–80% of the time. The synthetic players follow formation anchors that shift with the
+  ball, so this shows the code learns a shape signal, not how strong the real one is.
+- **Command for the human** (after merge; a few minutes, ~1 GB RAM):
+  `.venv/bin/python tools/team_model_check.py --gt evaluation/gt/BAR-ATH_possession_gt_public.csv`;
+  paste back the whole output (table and gate line).
+- **Real data:** pending. The gate decides whether E005c is designed.
 
 #### E005c — Classifier probabilities as gap-only emissions (to be designed after E005b)
 

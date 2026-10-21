@@ -10,3 +10,8 @@ numpy==2.5.4
 pandas==3.0.6
 python-dateutil==2.9.0.post0
 six==1.17.0
+# E005b team-from-movement classifier (HistGradientBoostingClassifier), with its dependencies.
+scikit-learn==1.5.2
+scipy==1.18.1
+joblib==1.6.0
+threadpoolctl==3.7.0
