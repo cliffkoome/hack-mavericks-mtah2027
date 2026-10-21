@@ -71,7 +71,7 @@ command and what to paste back.
 | E002 | 2026-10-20 | PR #8 | Recalibrate the evidence cues against measured rates | drop: D share 45% -> 8%; reverted in PR #9 |
 | E003 | 2026-10-21 | PR #11 | Player-movement cue (players walk at stoppages) | keep: D share 45.3% -> 36.7% |
 | E004 | 2026-10-21 | PR #13 | Long untracked-ball runs (> 10 s) as dead-ball evidence | drop: value rule gives alive rate 0.41 ≥ 0.15; not implemented |
-| E005a | — | not yet | Masked-ball harness (yardstick for gaps) | design proposed |
+| E005a | 2026-10-21 | this PR | Masked-ball harness (yardstick for gaps) | tool built; awaiting real run |
 | E005b | — | not yet | Team-from-movement classifier, half-to-half CV | planned |
 | E005c | — | not yet | Classifier probabilities as gap-only emissions | planned |
 | E006 | — | not yet | Visible-ball possession-change rules | planned |
@@ -422,7 +422,7 @@ command and what to paste back.
   - **revert** otherwise;
   - secondary, not decisive: the home share should not move clearly away from ~0.65 (rules).
 
-#### E005a — Masked-ball harness (design proposed; awaiting approval)
+#### E005a — Masked-ball harness (design approved in PR #16; implemented)
 
 - **Purpose:** a full-match measure of how well the pipeline survives losing the ball, with no
   ground truth. It is the yardstick for E005b and E005c, which change behaviour only inside gaps,
@@ -466,8 +466,32 @@ command and what to paste back.
   1.0 when nothing is masked, and the metric helpers on hand-built label arrays.
 - **Synthetic first:** run on 5 synthetic seeds, where the real truth is also known, to check
   the proxy tracks the truth-based numbers in direction.
-- **Command for the human** (after approval and merge):
-  `.venv/bin/python tools/masked_harness.py`; paste back the printed table only.
+- **Implemented as designed**, one detail made concrete: the target hidden share is computed at run
+  time from the bundle (untracked share of the reference's alive frames), not hard-coded as 0.172,
+  so the same code is right on synthetic bundles. Placement constants live in
+  `possession/masking.py`; the change tolerance is `spec.fps` (±1 s).
+- **Synthetic** (5 full bundles × 5 masking seeds; correctness only). Table 1 = masked run vs our
+  own unmasked run (the proxy); table 2 = against the synthetic truth, around the same frames:
+
+  | bundle | proxy: change recall | proxy: spellF1 | truth: change recall unmasked → masked | truth: spellF1 unmasked → masked | possessions unmasked → masked |
+  |---|---|---|---|---|---|
+  | 0 | 0.123 | 0.527 | 0.236 → 0.044 | 0.458 → 0.208 | 280 → 143 |
+  | 1 | 0.174 | 0.580 | 0.228 → 0.059 | 0.487 → 0.252 | 261 → 149 |
+  | 2 | 0.118 | 0.536 | 0.259 → 0.043 | 0.445 → 0.214 | 278 → 146 |
+  | 3 | 0.069 | 0.519 | 0.191 → 0.038 | 0.435 → 0.189 | 258 → 136 |
+  | 4 | 0.073 | 0.521 | 0.225 → 0.038 | 0.467 → 0.210 | 274 → 138 |
+
+  Seed-to-seed std is ≤ 0.025 on every rate, so 5 seeds suffice. On every bundle, the proxy and
+  the truth-based scores fall together, so the proxy reads in the right direction. The size is not
+  transferable: the generator loses the ball on ~42% of alive frames in short bursts (median
+  0.7 s), against 17% in runs of 3 s and more on the real match, so the synthetic masking is far
+  heavier. The pattern matches E005's hypothesis: without the ball, the decoder carries the last
+  side through the gap, and about half the possessions disappear.
+- **Command for the human** (after merge; ~1–2 minutes):
+  `.venv/bin/python tools/masked_harness.py --gt evaluation/gt/BAR-ATH_possession_gt_public.csv`;
+  paste back the whole output (context lines, table 1, table 2). Table 2 covers only the public
+  5 minutes: indicative, n stated.
+- **Real data** (human-run, aggregates only): pending.
 - **Decision:** none. E005a is a measuring tool. Its E003 numbers become the baseline that E005c
   must improve on.
 
