@@ -26,7 +26,7 @@ versions without a leaderboard, and it becomes the backbone of the technical doc
 | E000 | 2026-10-20 | b7292ff | Reproduce the reference baseline with our own code | keep: IDENTICAL ×4 on real data |
 | E001 | 2026-10-20 | PR #5 | 3-state Viterbi decoder instead of the window vote | keep: default model since PR #5 |
 | E002 | 2026-10-20 | PR #8 | Recalibrate the evidence cues against measured rates | drop: D share 45% -> 8%; reverted in PR #9 |
-| E003 | 2026-10-21 | this PR | Player-movement cue (players walk at stoppages) | pending: real-data run |
+| E003 | 2026-10-21 | PR #11 | Player-movement cue (players walk at stoppages) | keep: D share 45.3% -> 36.7% |
 
 ## Entry template
 
@@ -199,7 +199,7 @@ versions without a leaderboard, and it becomes the backbone of the technical doc
 
 ### E003 — Player-movement cue
 
-- **Date / author / commit:** 2026-10-21, Hack Mavericks, this PR. Design and criterion were fixed
+- **Date / author / commit:** 2026-10-21, Hack Mavericks, PR #11. Design and criterion were fixed
   in PR #10, before the code; the code follows them with no value changed.
 - **Hypothesis:** players stay tracked when the ball does not. In play they jog and sprint; at a
   stoppage they walk. A cue on the players' median speed should add dead-ball evidence where it
@@ -259,7 +259,23 @@ versions without a leaderboard, and it becomes the backbone of the technical doc
 - **Commands for the human after merging:**
   `run_pipeline.py --out evaluation/results/hm_hmm_e003.csv`, then
   `run_evaluation.py --no-detail`; paste back the JSON summary and the board.
-- **Full-match plausibility** (human-run, aggregates only): pending.
-- **Decision:** pending the real run; the pre-set criterion above decides.
+- **Full-match plausibility** (human-run, aggregates only):
+
+  | | E001 | E003 | pre-set criterion |
+  |---|---|---|---|
+  | D share of graded frames | 45.3% | **36.7%** | into 30–42% |
+  | possessions | 316 | 275 | ≥ 200 |
+  | mean duration | 11.0 s | 14.6 s | 10–20 s |
+  | home share | 0.611 | 0.599 | |
+  | sha256 | `6501615e…` | `d6aee597…` | |
+
+  D share = 58,323 D of 158,857 graded frames (no `X`).
+- **Public window** (correctness only): passes. 17 possessions (truth 17), mean 16.5 s (truth
+  14.2 s); macroF1 0.6831 -> 0.6825, unchanged; spellF1 0.3771 -> 0.4000, inside the ±0.33
+  noise band and ignored as the rules require.
+- **Decision:** keep. All three parts of the pre-set criterion are met: D share inside 30–42%,
+  possessions ≥ 200, mean inside 10–20 s. E003 is the submitted model from PR #11. The fear
+  raised by the synthetic run (D collapsing) did not happen on the real data, which supports
+  reading that drop as a generator mismatch.
 - **Follow-ups:** make the generator's players walk at stoppages (a `make_synthetic.py` change,
   kept out of this experiment so E003 stays a single change).
