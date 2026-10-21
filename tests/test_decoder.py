@@ -258,6 +258,27 @@ def test_gap_cue_off_ignores_p_home():
         evidence.log_emissions(tracking, SPEC, off))
 
 
+def test_control_cue_replaces_the_nearest_side_where_known():
+    players = [[[10, 10]]] * 4
+    ball = [[11, 10], [11, 10], [np.nan, np.nan], [30, 10]]   # near H, near H, unseen, far
+    tracking = FakeTracking(players, ball, [H])
+    control = np.array([A, -1, A, A], dtype=np.int8)
+    with_cue = evidence.log_emissions(tracking, SPEC, evidence_params(), control=control)
+    without = evidence.log_emissions(tracking, SPEC, evidence_params())
+    assert with_cue[0, A] - with_cue[0, H] == pytest.approx(np.log(0.87 / 0.13))  # replaced
+    np.testing.assert_array_equal(with_cue[[1, 2]], without[[1, 2]])  # unknown; ball unseen
+    assert with_cue[3, A] - with_cue[3, H] == pytest.approx(np.log(0.87 / 0.13))  # far: new cue
+    assert with_cue[0, D] == without[0, D]
+
+
+def test_control_cue_off_ignores_control():
+    tracking = FakeTracking([[[10, 10]]] * 4, [[11, 10]] * 4, [H])
+    off = evidence_params(control_acc=None)
+    np.testing.assert_array_equal(
+        evidence.log_emissions(tracking, SPEC, off, control=np.full(4, A, dtype=np.int8)),
+        evidence.log_emissions(tracking, SPEC, off))
+
+
 def test_weight_scales_everything():
     players = [[[10, 10]]] * 4
     ball = [[11, 10], [np.nan, np.nan], [50, -5], [50, -5]]

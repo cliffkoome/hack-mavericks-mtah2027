@@ -13,6 +13,8 @@ Each frame contributes independent cues, each a probability with a plain meaning
   slow      whether the players are walking (median speed over +/- 1 s). Players stay tracked
             when the ball does not, so this also argues *against* D in open play with the ball
             lost, where the visible cue alone over-calls it (E003).
+  control   where the ball is seen and a side was last in control of it (touches.py, E009):
+            that side, trusted at `control_acc`, replaces the nearest-player cue on that frame.
   gap team  where the ball is untracked: the side the team-from-movement classifier favours
             (p_home, team_model.py), trusted by how confident it is (E005c). Frames with the
             ball seen keep the nearest-player cue alone, so no frame has two team cues.
@@ -28,10 +30,11 @@ import numpy as np
 from possession import H, A, D, features
 
 
-def log_emissions(tracking, spec, params, p_home=None):
+def log_emissions(tracking, spec, params, p_home=None, control=None):
     """(n, 3) array: log P(evidence at frame t | state), columns in H, A, D order.
 
     p_home: per-frame P(H has the ball) from team_model, NaN where unknown; None = no gap cue.
+    control: per-frame last-control side (H/A, negative where unknown); None = no control cue.
     """
     team, distance = features.nearest_player(tracking)
     visible = features.ball_visible(tracking)
@@ -50,6 +53,12 @@ def log_emissions(tracking, spec, params, p_home=None):
         out[cue, state] = np.where(team[cue] == state, np.log(accuracy[cue]),
                                    np.log(1 - accuracy[cue]))
     out[cue, D] = np.log(0.5)
+    if control is not None and params["control_acc"] is not None:
+        held = visible & (control >= 0)
+        for state in (H, A):
+            out[held, state] = np.where(control[held] == state, np.log(params["control_acc"]),
+                                        np.log(1 - params["control_acc"]))
+        out[held, D] = np.log(0.5)
 
     missing = ~visible
     burst = np.ones(len(missing))
