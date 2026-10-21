@@ -178,7 +178,7 @@ python starter/baseline.py                            # rebuild baselines (needs
 
 ## Current status (update at the end of every session)
 
-Last updated: 2026-10-21 (E006 stopped).
+Last updated: 2026-10-21 (E006 stopped; E009 proposed).
 
 - **Submitted model:** `hmm` (3-state Viterbi, `possession/decoder.py`), E001's evidence values,
   E003's player-movement cue, and E005c's gap-only team cue from the team-from-movement
@@ -199,8 +199,9 @@ Last updated: 2026-10-21 (E006 stopped).
 - **E006 stopped** (velocity-based touches): on this ball track a touch is no sharper than free
   flight (Δv p99 6.1 m/s near players vs 9.3 m/s in free flight); ~1 touch found in the match.
   Negative result recorded in EXPERIMENTS.md; the model never used it.
-- **Next step (to choose):** a proximity-based "last control" cue for seen frames, the dead-in-gaps
-  loss, or E007 restarts.
+- **Next step: E009, last-control side on seen-ball frames** (chosen by the human; design in
+  EXPERIMENTS.md awaiting OK). Held = own player within 2 m, no opponent; control = 10+ held
+  frames. E006's gate. Then the dead-in-gaps loss or E007.
   Largest remaining gap loss: to_dead 0.141 on hidden frames. Then E007 restarts, E008 Metrica.
 - **Queued:** Smart Tagging set pieces as restart evidence (fits with E007); a control-based team
   cue for transitions ~10 frames early; generator fixes in `make_synthetic.py` (players walk at

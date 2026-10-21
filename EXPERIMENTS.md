@@ -77,6 +77,7 @@ command and what to paste back.
 | E006 | 2026-10-21 | PR #24, #25 | Last-touch team on seen-ball frames (touch, duel rules) | stop: Δv touches do not stand out on this ball track |
 | E007 | — | not yet | Restart detection and attribution from player configuration | planned |
 | E008 | — | not yet | Metrica sample-data harness (development aid) | planned |
+| E009 | — | not yet | Last-control side on seen-ball frames (proximity, no velocity) | design proposed: measure first |
 
 ## Entry template
 
@@ -817,3 +818,40 @@ command and what to paste back.
   away from the ball (2–5 m, > 5 m), and on the real match 48% of seen frames have nobody within
   2 m. A proximity-based "last control" cue, needing no velocity, is a separate experiment
   if chosen (proposed in the next entry only on the human's go-ahead).
+
+### E009 — Last-control side on seen-ball frames (design proposed; measure first)
+
+- **Status:** design proposed for approval, chosen by the human after E006 stopped. Nothing
+  implemented.
+- **Why:** E006's synthetic result showed that "the side last in control" beats "the nearest
+  side" where the nearest player is 2 m or more away (bundle 0: 0.835 vs 0.606 at 2–5 m, 0.886
+  vs 0.591 beyond 5 m). On the real match, 48% of seen frames have nobody within 2 m (E006
+  table 0), where the current cue is weak (0.647 at 2–5 m) or absent (> 5 m). E006 failed only on
+  *detecting* touches from velocity, which this tracking cannot support. Proximity needs no
+  velocity.
+- **Control, by rule (no new fitted values):**
+  - a frame is *held* by side S when S's nearest player is within `near_m` (2 m, existing config)
+    and no opponent is within `near_m`. Both sides within 2 m is a duel: nobody holds it;
+  - *control* needs at least K = 10 consecutive held frames (0.4 s) by the same side. Reason: a
+    ball passing a player at pass speed (≥ 10 m/s, 0.4 m per frame) crosses a 2 m-radius disc in
+    at most 10 frames even through its centre. So K = 10 excludes every fly-by at pass speed,
+    while a reception or a dribble keeps the ball near a player for longer.
+- **Last-control side:** set from the start of each controlled run, carried forward while the ball
+  stays seen; reset after an untracked run longer than 1 s (gaps belong to E005c's cue) and on
+  every stoppage (pass-1 labels). A duel keeps the previous side. Same carry-forward as E006
+  (`touches.last_touch`), reused.
+- **E009a: measurement** (`tools/inspect_touches.py` gains the control cue; aggregates only):
+  - full match, label-free: controls per minute of play, share of held frames in duels,
+    coverage of seen alive frames, agreement with the nearest-player side;
+  - public window vs truth, truth-alive seen frames with a last-control side: accuracy of last
+    control vs nearest player on the same frames, by nearest distance (< 2, 2–5, > 5 m).
+- **Gate to build E009b, fixed now (E006's, unchanged):** last control ≥ nearest player + 0.03 on
+  those public frames, and coverage ≥ 0.5 of full-match seen alive frames. Otherwise stop.
+- **E009b, if the gate passes:** on seen frames with a last-control side, it replaces the
+  nearest-player cue. Its accuracy is the public measured rate, rounded (E003's rule).
+  Criterion for the real run (E006b's): possessions 290–400 with a 10–20 s mean, D share 30–42%,
+  public window passes (16 ± 3 possessions, macroF1 ≥ 0.6880); revert otherwise. Limitation as
+  before: no full-match accuracy check for seen frames.
+- **Tests:** held, duel and control runs on hand-built frames (9 held frames are not control, 10
+  are); a fly-by at 10 m/s through a player's disc is never control; carry-forward and resets as
+  in E006.
