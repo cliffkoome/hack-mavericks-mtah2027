@@ -23,6 +23,45 @@ versions without a leaderboard, and it becomes the backbone of the technical doc
   share while the ball is alive is 0.60 (E003). A change that moves it clearly *away* from ~0.65
   deserves a second look; no value is ever set to move it towards 0.65.
 
+## Background: literature (team review, 2026-10-21)
+
+Figures are as the papers report them, collected in the team's review. They are not reproduced
+here, and **they are not comparable with our task**: they are per-frame accuracies on corrected or
+GPS tracking, while ours is automatic tracking that loses the ball on 41% of graded frames, scored
+per possession. Treat them as rough targets, not promises.
+
+| source | what it does | what we take from it |
+|---|---|---|
+| Borghesi et al. 2023, ESWA (TCN possession) | dead/home/away from tracking: 89% dead-alive, 86% possession | two stages (dead/alive, then team) beat one ternary model; 64-frame acausal windows; missing ball interpolated plus a missing flag |
+| Ball Radar (KDD'23, github.com/pientist/ballradar); TranSPORTmer (ACCV'24) | team possession from player trajectories alone, ~81–86% | ~10 s windows of position, velocity, acceleration; TranSPORTmer trains by masking 80–90% of ball observations, the idea behind E005a |
+| Lang et al. 2022, Sci Rep | in/out of play from players only, 92% (AdaBoost, CPU) | features at offsets ±0.4/0.8/2/4/20/40/80 s; the seconds around a status change matter most |
+| Vidal-Codina et al. 2022 | rule-based events from tracking | possession zone ~1 m; duel zone (1 m, 2 opponents) does not flip possession; a gain needs a ball direction or speed change; Savitzky–Golay 7-frame ball smoothing; set-piece triggers from player configuration; executor = closest player at the first in-play frame (E006, E007) |
+| Link & Hoernig 2017 | individual ball possession | a kick is a ball acceleration peak ≥ 4 m/s² (E006) |
+| Morra et al. 2020, "Slicing and dicing soccer"; databallpy docs | possession and event tooling | reference implementations to read, not to depend on |
+| github.com/metrica-sports/sample-data | 3 public games, tracking + events (game 3 is EPTS, like ours) | public, so it may be read directly (E008) |
+
+Two cautions that bind the plan:
+
+- **Paper accuracies are per frame on cleaner tracking.** Our gates and criteria stay our own.
+- **Metrica sample data is a development aid, not validation.** Its labels come from human event
+  tagging, our ground truth from corrected tracking, so they disagree at possession edges. The
+  real checks stay half-to-half on our own match plus simulated gaps (E005a).
+
+## Roadmap from E005 (one PR per step; design approved by the human before code)
+
+| step | idea | gate before the next step |
+|---|---|---|
+| E005a | Masked-ball harness: hide the ball where it *is* seen, measure what the pipeline loses | runs on synthetic and real; numbers are a baseline, not a decision |
+| E005b | Team-from-movement classifier, half-to-half cross-validated | pooled hold-out accuracy ≥ 0.60, else stop E005 |
+| E005c | Its probabilities as gap-only team emissions in the decoder | E005's real-run criterion |
+| E006 | Visible-ball possession-change rules (duel zone, direction/speed change, kick peak) | own criterion, set at design |
+| E007 | Restart detection and attribution from player configuration, incl. N/A throw-ins | own criterion, set at design |
+| E008 | Metrica sample-data harness: weak H/A/D labels from events, for development and pre-training | development aid only |
+
+Each step: design proposed and approved first; few hyperparameters, fixed by written rules,
+never chosen on the public 5 minutes; tests on synthetic data; an entry here; the exact local
+command and what to paste back.
+
 ## Index
 
 | ID | date | commit | idea | decision |
@@ -32,7 +71,12 @@ versions without a leaderboard, and it becomes the backbone of the technical doc
 | E002 | 2026-10-20 | PR #8 | Recalibrate the evidence cues against measured rates | drop: D share 45% -> 8%; reverted in PR #9 |
 | E003 | 2026-10-21 | PR #11 | Player-movement cue (players walk at stoppages) | keep: D share 45.3% -> 36.7% |
 | E004 | 2026-10-21 | PR #13 | Long untracked-ball runs (> 10 s) as dead-ball evidence | drop: value rule gives alive rate 0.41 ≥ 0.15; not implemented |
-| E005 | — | not yet | Team from player shape where the ball is untracked | planned: measure first |
+| E005a | — | not yet | Masked-ball harness (yardstick for gaps) | design proposed |
+| E005b | — | not yet | Team-from-movement classifier, half-to-half CV | planned |
+| E005c | — | not yet | Classifier probabilities as gap-only emissions | planned |
+| E006 | — | not yet | Visible-ball possession-change rules | planned |
+| E007 | — | not yet | Restart detection and attribution from player configuration | planned |
+| E008 | — | not yet | Metrica sample-data harness (development aid) | planned |
 
 ## Entry template
 
@@ -358,57 +402,87 @@ versions without a leaderboard, and it becomes the backbone of the technical doc
     configuration for long gaps) and probably the largest remaining source of error.
 - **Decision:** drop, by the pre-set rule. No code change to the model.
 
-### E005 — Team from player shape where the ball is untracked (planned; measure first)
+### E005 — Team inside ball gaps (E005a harness, E005b classifier, E005c decoder)
 
-- **Status:** planned. Nothing implemented. Design, value rule and criteria are fixed here before
-  any code or measurement.
+- **Status:** revised 2026-10-21 after the literature review. The first version (a 3-feature
+  logistic shape model, PR #15) is superseded by E005b below. Carried over unchanged: the
+  problem, the 0.60 drop gate, the real-run criterion, the home-share sanity check.
 - **Problem** (E004 table 4): 17.2% of predicted-alive frames have no ball, so no team cue at all.
   There the decoder carries the last side through the gap, so a possession that changes hands
   inside a gap is lost. E003 predicts 275 possessions; the public window's rate (17 in 5 min)
   scaled to the graded time suggests roughly 350 (a rough figure from 17 possessions). Under-
   segmentation in gaps is the most likely cause.
-- **Hypothesis:** players show who has the ball without the ball. The side in possession pushes
-  up and spreads out; the side without it drops back and closes up. A small model of team shape,
-  learned from frames where the ball *is* seen, can supply a team cue inside the gaps.
-- **Design:**
-  - Attacking direction per half, label-free: each team defends the end its players' mean x is
-    nearer to over that half.
-  - Three per-frame features, each home minus away, so swapping the teams flips the sign:
-    1. *advance*: mean outfield x towards the opponent's goal;
-    2. *spread*: std x × std y of the team's players;
-    3. *push*: mean velocity towards the opponent's goal over ±1 s.
-  - Logistic regression P(H | features) with no intercept (symmetric: no home prior baked in;
-    the decoder already holds priors). Fit by Newton's method in numpy, so it is deterministic.
-  - Training labels, self-supervised, from the full match, no ground truth: frames that E003
-    predicts alive, with the ball seen and the nearest player within `near_m` (2 m); label = that
-    player's side (0.873 accurate on the public window).
-  - The model is refit inside the pipeline on every run. No weights are committed, and the
-    labels come from the tracking itself, so it stays reproducible and leaks nothing.
-  - Cue, used **only on frames where the ball is untracked** (seen frames keep the nearest-player
-    cue, so nothing is double-counted). Two bands like the existing team cue: *strong*
-    (P ≥ 0.7 or ≤ 0.3) and *weak*. Each band gets an accuracy; the alive states score log(acc)
-    for agreeing with the model's side and log(1 − acc) otherwise, and D scores log 0.5.
-- **Measurement first** (new `tools/team_shape_check.py`, human-run; aggregates only):
-  - cross-half hold-out: fit on one half, test on the other, both ways. Accuracy against the
-    training label per band, with n and share of frames in each band;
-  - the fitted coefficients (3 numbers, for the write-up's explainability);
-  - public window, against the truth: accuracy on alive frames with the ball seen and with it
-    untracked (only ~391 of those frames, from a handful of possessions: indicative only);
-  - share of untracked predicted-alive frames in each band over the full match.
-- **Rule for the values, fixed now:**
-  - `shape_acc_strong`, `shape_acc_weak` = the pooled cross-half accuracies, each shrunk
-    halfway towards 0.5 (training frames are close-control frames with the ball seen; gap frames
-    are harder: crowds, long balls).
-  - **Drop without implementing** if pooled hold-out accuracy is < 0.60, or strong-band accuracy
-    < 0.65, or the public untracked accuracy is below 0.5 (worse than a coin).
-- **Pre-set criterion for the real run** (if it goes ahead, the only change against E003):
+- **Hypothesis:** players show who has the ball without the ball (Ball Radar, TranSPORTmer:
+  ~81–86% from trajectories alone on cleaner data). The side in possession pushes up and spreads
+  out; the side without it drops back, closes up and presses.
+- **Real-run criterion for E005c** (unchanged from PR #15):
   - **keep** if possessions rise above 275 and stay ≤ 400, mean 10–20 s, D share within 30–42%,
     and the public window still passes (17 ± 3 possessions, macroF1 not below 0.6825 by more
     than 0.01);
   - **revert** otherwise;
   - secondary, not decisive: the home share should not move clearly away from ~0.65 (rules).
-- **Known limitation:** the hold-out test uses frames with the ball seen. Gap frames differ (ball
-  in the air or in a crowd), so the hold-out accuracy is an upper bound for the gaps; hence the
-  shrinkage and the separate public untracked check.
-- **Synthetic:** the generator moves players towards formation anchors that shift with the ball,
-  so it should show some shape signal; that tests the code, not the size of the effect.
+
+#### E005a — Masked-ball harness (design proposed; awaiting approval)
+
+- **Purpose:** a full-match measure of how well the pipeline survives losing the ball, with no
+  ground truth. It is the yardstick for E005b and E005c, which change behaviour only inside gaps,
+  exactly where the public window has too few frames (391) to say anything.
+- **Method:**
+  1. *Reference:* run the pipeline unmasked. Its labels are the reference on the frames we will
+     mask: those frames had the ball seen, so this is the best label we have there.
+  2. *Gap lengths:* the real untracked runs of the match, restricted to runs that are mostly
+     (> 50% of frames) predicted alive by the reference. These are the gaps in play we want to
+     imitate; the long gaps at stoppages are a different problem (E003, E004). Read at run time
+     from the bundle and never printed beyond quantiles.
+  3. *Placement:* draw a gap start among frames where the ball is seen and the reference is
+     alive, then a length from step 2; hide the ball on the seen frames in that stretch. Start
+     weights, mildly biased the way real gaps are: ×2 if 3+ players are within `mid_m` (5 m) of
+     the ball (crowd), ×2 if within ±2 s of an H↔A change in the reference (contests, long
+     balls), so ×4 if both. Repeat until the masked frames reach the share of untracked frames
+     among the reference's alive frames (0.172 on the real match): the masked run then sees
+     about twice the real gap density in play.
+  4. *Masked run:* the same pipeline on the masked tracking. Only `tracking.ball` changes, so
+     every ball-derived cue (nearest player, visible, speed, outside) sees the gap.
+  5. *Seeds:* 5 fixed seeds (0–4); report mean ± std over them.
+- **Outputs** (aggregates only):
+  - *change recall:* of the reference's H↔A changes inside a masked stretch or within ±1 s of
+    one, the share the masked run also has within ±1 s (the scorer's transition tolerance);
+  - *possession count* masked vs reference, and *mean IoU* of each reference possession that
+    touches a mask with its best-matching masked-run possession;
+  - *spellF1-proxy:* the official `possession_metrics.evaluate` with the reference as truth;
+  - *frame agreement* on the masked frames;
+  - with `--gt` on the public window: the same numbers against the real truth, n stated
+    (indicative only: 5 minutes).
+- **Hyperparameters, each with its reason:** crowd = 3+ players within `mid_m` (existing
+  config, 5 m); change neighbourhood ±2 s (contests and long balls around a turnover; Lang et al.:
+  the seconds around a change matter most); weights ×2 (a mild bias, not a model of where gaps
+  happen); masked share = 0.172 (measured, E004); 5 seeds. None is tuned on any result.
+- **What it cannot say:** the reference is our own model, not the truth. The harness measures
+  how much *worse* the pipeline gets when the ball goes missing, not how good it is. Real gaps
+  sit where tracking is hardest, so the masked gaps are probably easier than real ones.
+- **Code:** `possession/masking.py` (gap lengths, placement, masking; small and unit-tested),
+  `tools/masked_harness.py` (runs reference + 5 masked runs, prints the table). Tests on synthetic
+  data: masks only seen frames, reaches the target share, is deterministic per seed, recall is
+  1.0 when nothing is masked, and the metric helpers on hand-built label arrays.
+- **Synthetic first:** run on 5 synthetic seeds, where the real truth is also known, to check
+  the proxy tracks the truth-based numbers in direction.
+- **Command for the human** (after approval and merge):
+  `.venv/bin/python tools/masked_harness.py`; paste back the printed table only.
+- **Decision:** none. E005a is a measuring tool. Its E003 numbers become the baseline that E005c
+  must improve on.
+
+#### E005b — Team-from-movement classifier (to be designed after E005a)
+
+- Outline from the review, to be proposed in full before code: team-level features (centroid x
+  and velocity, spread, compactness, defensive-line height, backward-sprinting count, pressing
+  distance), attack direction normalised per half, sampled at offsets ±0.4, 1, 2, 4, 8 s;
+  gradient boosting, deterministic (fixed seed, fixed threads); half-to-half cross-validation;
+  accuracy overall, by gap length, and on the E005a harness. The 0.60 gate stays.
+- Open point for its design: gradient boosting needs a new pinned dependency (e.g.
+  scikit-learn's HistGradientBoostingClassifier); numpy and pandas are the only ones today.
+
+#### E005c — Classifier probabilities as gap-only emissions (to be designed after E005b)
+
+- Gap-only so the nearest-player cue is never double-counted. How far to trust the
+  probabilities (calibration, shrinkage) is set at design from E005b's hold-out numbers, by a
+  rule written before the real run.
