@@ -77,7 +77,7 @@ command and what to paste back.
 | E006 | 2026-10-21 | PR #24, #25 | Last-touch team on seen-ball frames (touch, duel rules) | stop: Δv touches do not stand out on this ball track |
 | E007 | — | not yet | Restart detection and attribution from player configuration | planned |
 | E008 | — | not yet | Metrica sample-data harness (development aid) | planned |
-| E009 | 2026-10-21 | PR #28, #29 | Last-control side on seen-ball frames (proximity, no velocity) | E009a PASS; E009b on main untested on real data; redesign shows no gain: stop recommended |
+| E009 | 2026-10-21 | PR #28, #29, this PR | Last-control side on seen-ball frames (proximity, no velocity) | stop: no gain over E005c at any trust; code kept, off (`control_acc = None`) |
 
 ## Entry template
 
@@ -914,11 +914,13 @@ command and what to paste back.
   weakly just reproduces E005c. The decoder already extracts from the nearest cue what last
   control offers. The real public window shows the same raw gap as synthetic (0.865 vs 0.780,
   synthetic ~0.84 vs ~0.79), so no real gain is expected either.
-- **State of main:** PR #29 (draft) was merged, so the default config runs E009b
-  (`control_acc = 0.87`), not validated on real data. The submitted CSV stays E005c
-  (`a8ee1b28…`) until `make submission` is run again.
-- **Recommendation:** stop E009 and set `control_acc = None` (back to E005c exactly), or, if the
-  human prefers evidence, run the pre-set real check once and revert on failure.
+- **Decision:** stop. PR #29 (draft) had been merged, and its revert PR (#30) was closed
+  unmerged, so main ran E009b. Rather than revert the code, it is switched off:
+  `control_acc = None` in `config.py`, the documented off-switch. The pipeline then gives E005c
+  exactly: on synthetic bundle full-seed0, byte-identical to the E005c code (PR #28 merge,
+  sha256 `a5d17ac2…` both). Real-data confirmation is the human's (expect `a8ee1b28…`). The
+  code (`touches.held/controls`, the control branch of `evidence.log_emissions`) stays, tested,
+  for a future redesign.
 - **Lesson** (for any future seen-frame cue): gate against the *decoded* labels on the same
   frames, not against the raw cue it competes with, and check the error-run length of carried
   cues against the ~5-frame correlation the evidence weight assumes.
