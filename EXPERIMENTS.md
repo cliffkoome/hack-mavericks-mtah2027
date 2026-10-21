@@ -73,7 +73,7 @@ command and what to paste back.
 | E004 | 2026-10-21 | PR #13 | Long untracked-ball runs (> 10 s) as dead-ball evidence | drop: value rule gives alive rate 0.41 ≥ 0.15; not implemented |
 | E005a | 2026-10-21 | PR #17 | Masked-ball harness (yardstick for gaps) | measured: E003 catches 11.5% of side changes in gaps |
 | E005b | 2026-10-21 | PR #19 | Team-from-movement classifier, half-to-half CV | gate PASS: (b) 0.789, (d) 0.949 |
-| E005c | 2026-10-21 | this PR | Classifier probabilities as gap-only emissions | built; awaiting real run |
+| E005c | 2026-10-21 | PR #21 | Classifier probabilities as gap-only emissions | keep: 275 -> 308 possessions; gap change recall 0.115 -> 0.284 |
 | E006 | — | not yet | Visible-ball possession-change rules | planned |
 | E007 | — | not yet | Restart detection and attribution from player configuration | planned |
 | E008 | — | not yet | Metrica sample-data harness (development aid) | planned |
@@ -663,4 +663,29 @@ command and what to paste back.
   4. `make reproduce`
 
   Paste back the JSON summary, the board, the harness output and the reproduce line.
-- **Real data:** pending. The pre-set criterion above decides.
+- **Real data** (human-run, aggregates only):
+
+  | | E003 | E005c | pre-set criterion |
+  |---|---|---|---|
+  | possessions | 275 | **308** | > 275 and ≤ 400 |
+  | mean duration | 14.6 s | 13.3 s | 10–20 s |
+  | D share of graded frames | 36.7% | 35.4% (56,166 / 158,857) | 30–42% |
+  | public window: possessions / macroF1 | 17 / 0.6825 | 16 / 0.6980 | 17 ± 3 / ≥ 0.6725 |
+  | harness change recall (vs own reference) | 0.115 ± 0.052 | **0.284 ± 0.044** | > 0.167 |
+  | harness wrong_side / to_dead | 0.264 / 0.167 | 0.161 / 0.141 | (reported) |
+  | harness agreement / possessions masked | 0.581 / 241 of 275 | 0.700 / 293 of 308 | (reported) |
+  | home share (sanity) | 0.599 | 0.594 | not clearly away from ~0.65 |
+  | sha256 | `d6aee597…` | `a8ee1b28…` | |
+
+  `make reproduce`: byte-identical. Public spellF1 0.4000 → 0.4242, inside the noise band and
+  ignored as the rules require.
+- **Reading:** every part of the criterion is met. Hiding the ball now costs 15 possessions
+  instead of 34, and 28% of side changes near a gap survive instead of 11.5%. One caveat: each
+  harness number is measured against its own model's unmasked run, so the two recalls measure
+  robustness to a lost ball, not accuracy. Public window, table 2 (3 ± 2 changes, 7 possessions,
+  not readable): against the truth, the masked E005c run agrees more than the unmasked one
+  (0.856 vs 0.715; wrong side 0.072 vs 0.206). It hints that the classifier can beat the
+  nearest-player cue on some seen frames: a question for E006, not evidence.
+- **Decision:** keep. E005c is the submitted model from PR #21 (`make submission` by the human).
+- **Follow-ups:** `to_dead` 0.141 on hidden frames is now the largest single loss in gaps;
+  E006 (visible-ball change rules) is next on the roadmap.

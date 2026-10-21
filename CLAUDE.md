@@ -178,30 +178,28 @@ python starter/baseline.py                            # rebuild baselines (needs
 
 ## Current status (update at the end of every session)
 
-Last updated: 2026-10-21 (E005c built; real run pending).
+Last updated: 2026-10-21 (E005c kept).
 
-- **Submitted model:** `hmm` (3-state Viterbi, `possession/decoder.py`), E001's evidence values
-  plus E003's player-movement cue (players' median speed < 1.25 m/s over ±1 s).
-  Real data, full match: 275 possessions, mean 14.6 s, D 36.7% of graded frames, sha256 `d6aee597…`.
-  Public window (correctness only): 17 possessions (truth 17), spellF1 0.4000, macroF1 0.6825.
-  Floor to beat: spellF1 0.2433.
+- **Submitted model:** `hmm` (3-state Viterbi, `possession/decoder.py`), E001's evidence values,
+  E003's player-movement cue, and E005c's gap-only team cue from the team-from-movement
+  classifier (`possession/team_model.py`, two-pass pipeline). Real data, full match: 308
+  possessions, mean 13.3 s, D 35.4% of graded frames, sha256 `a8ee1b28…`. Public window
+  (correctness only): 16 possessions (truth 17), spellF1 0.4242, macroF1 0.6980. Floor: 0.2433.
 - **Verified on the real data:** `make verify-baseline` IDENTICAL ×4 (reader, alignment, slot teams).
-- **History:** E001 kept (D over-called at 45.3%); E002 recalibration dropped (D 8%); E003 kept
-  (D 36.7%, inside the pre-set 30–42%). Details and lessons in EXPERIMENTS.md.
-- **Known weakness:** the synthetic generator's players barely slow down at stoppages (18% of
-  dead frames slow vs 62% real), so synthetic scores under-rate E003. Fix it in `make_synthetic.py`
-  as its own change before relying on synthetic runs for later cues.
+- **History:** E001 kept (D over-called at 45.3%); E002 dropped (D 8%); E003 kept (D 36.7%);
+  E004 dropped before code; E005a harness; E005b classifier passed its gate (0.789); E005c kept
+  (possessions 275 -> 308, gap change recall 0.115 -> 0.284). Details in EXPERIMENTS.md.
+- **Known weakness of the synthetic generator:** players barely slow down at stoppages (18% of
+  dead frames slow vs 62% real), and the ball is lost in short bursts (median 0.7 s vs 7.2 s real)
+  with a weak shape signal. Synthetic scores therefore under-rate both E003 and E005c. Fix it in
+  `make_synthetic.py` as its own change before relying on synthetic runs for later cues.
 - **E004 dropped before implementation** (its pre-set value rule: long untracked runs are too
   common in play over the full match). Its measurement is in EXPERIMENTS.md: the ball is lost only
   in long blocks, and 17% of predicted-alive frames have no ball, so no team evidence.
-- **E005a done** (masked-ball harness, PR #17): hiding the ball in play, E003 catches 11.5% of
-  side changes and loses ~34 possessions (275 → 241). Rerun pending with the dead/wrong-side split.
-- **E005b passed its gate on real data:** half-to-half (b) 0.789, hidden frames 0.80 (0.86 when
-  confident), public truth-alive 0.864. Leakage checked (none: no ball, no GT, other-half model).
-- **E005c built** (gap-only team cue, 2-pass pipeline; config `gap_acc_strong` 0.86 / weak 0.56,
-  None = E003). The default config now runs E005c; if its real run fails the criterion, set
-  `gap_acc_strong` to None (revert) before `make submission`. Real run pending. Then E006–E008;
-  dead-in-gaps (0.17 of hidden alive frames) is a candidate after E005c.
+- **Next step: E006, visible-ball possession-change rules** (roadmap in EXPERIMENTS.md). Propose
+  the design first. Ball positions are noisy automatic tracking, so the papers' thresholds (e.g.
+  a 4 m/s² kick peak) must be measured on our data (inspect_cues-style) before use.
+  Largest remaining gap loss: to_dead 0.141 on hidden frames. Then E007 restarts, E008 Metrica.
 - **Queued:** Smart Tagging set pieces as restart evidence (fits with E007); a control-based team
   cue for transitions ~10 frames early; generator fixes in `make_synthetic.py` (players walk at
   stoppages; ball lost in runs > 10 s).
