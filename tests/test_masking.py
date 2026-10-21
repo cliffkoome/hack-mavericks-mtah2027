@@ -71,6 +71,18 @@ def test_compare_counts_a_change_lost_in_a_gap():
     assert result["n_touched"] == 2
     assert result["mean_iou"] == pytest.approx(0.25)    # H: 200/400 overlap, A: none
     assert result["agreement"] == pytest.approx(50 / 110)
+    assert result["wrong_side"] == pytest.approx(60 / 110) and result["to_dead"] == 0.0
+
+
+def test_compare_splits_losses_into_dead_and_wrong_side():
+    truth = np.array([H] * 400)
+    codes = np.array([H] * 100 + [D] * 30 + [A] * 20 + [H] * 250)
+    hidden = np.zeros(400, dtype=bool)
+    hidden[100:200] = True
+    result = masking.compare(truth, codes, hidden, SPEC, FPS)
+    assert result["to_dead"] == pytest.approx(0.3)
+    assert result["wrong_side"] == pytest.approx(0.2)
+    assert result["agreement"] == pytest.approx(0.5)
 
 
 def test_compare_ignores_changes_far_from_any_hidden_frame():

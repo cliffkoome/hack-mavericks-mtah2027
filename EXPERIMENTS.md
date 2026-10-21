@@ -71,8 +71,8 @@ command and what to paste back.
 | E002 | 2026-10-20 | PR #8 | Recalibrate the evidence cues against measured rates | drop: D share 45% -> 8%; reverted in PR #9 |
 | E003 | 2026-10-21 | PR #11 | Player-movement cue (players walk at stoppages) | keep: D share 45.3% -> 36.7% |
 | E004 | 2026-10-21 | PR #13 | Long untracked-ball runs (> 10 s) as dead-ball evidence | drop: value rule gives alive rate 0.41 ≥ 0.15; not implemented |
-| E005a | 2026-10-21 | this PR | Masked-ball harness (yardstick for gaps) | tool built; awaiting real run |
-| E005b | — | not yet | Team-from-movement classifier, half-to-half CV | planned |
+| E005a | 2026-10-21 | PR #17 | Masked-ball harness (yardstick for gaps) | measured: E003 catches 11.5% of side changes in gaps |
+| E005b | — | not yet | Team-from-movement classifier, half-to-half CV | design proposed |
 | E005c | — | not yet | Classifier probabilities as gap-only emissions | planned |
 | E006 | — | not yet | Visible-ball possession-change rules | planned |
 | E007 | — | not yet | Restart detection and attribution from player configuration | planned |
@@ -491,19 +491,70 @@ command and what to paste back.
   `.venv/bin/python tools/masked_harness.py --gt evaluation/gt/BAR-ATH_possession_gt_public.csv`;
   paste back the whole output (context lines, table 1, table 2). Table 2 covers only the public
   5 minutes: indicative, n stated.
-- **Real data** (human-run, aggregates only): pending.
-- **Decision:** none. E005a is a measuring tool. Its E003 numbers become the baseline that E005c
-  must improve on.
+- **Real data** (human-run, E003 model, aggregates only). Context: 275 reference possessions;
+  62 real gaps in play, length p50 7.2 s, p90 21.2 s; untracked share of alive frames 0.172,
+  hidden 0.174.
 
-#### E005b — Team-from-movement classifier (to be designed after E005a)
+  | vs unmasked reference (5 seeds) | value |
+  |---|---|
+  | change recall | 0.115 ± 0.052 (56 changes near hidden frames per seed) |
+  | mean IoU of touched possessions | 0.504 ± 0.029 (116 touched) |
+  | agreement on hidden frames | 0.581 ± 0.057 |
+  | spellF1-proxy | 0.831 ± 0.017 |
+  | possessions | 275 → 241 ± 4 |
 
-- Outline from the review, to be proposed in full before code: team-level features (centroid x
-  and velocity, spread, compactness, defensive-line height, backward-sprinting count, pressing
-  distance), attack direction normalised per half, sampled at offsets ±0.4, 1, 2, 4, 8 s;
-  gradient boosting, deterministic (fixed seed, fixed threads); half-to-half cross-validation;
-  accuracy overall, by gap length, and on the E005a harness. The 0.60 gate stays.
-- Open point for its design: gradient boosting needs a new pinned dependency (e.g.
-  scikit-learn's HistGradientBoostingClassifier); numpy and pandas are the only ones today.
+  Public window vs truth (4 ± 2 changes, 7 touched possessions: not readable): spellF1
+  0.400 → 0.367, possessions 17 → 14.
+- **Reading:** with the ball gone, the pipeline misses almost 9 in 10 side changes and loses ~34
+  possessions. Back-of-envelope for the real gaps: ~17,000 alive frames without a ball, at roughly
+  one possession change per 11–12 s of play, hold some 60 changes; catching most of them would
+  take the count from 275 towards the ~350 suggested by the public window. That is E005's target.
+- **Not yet known:** whether the 42% disagreement on hidden frames is mostly "called dead" or
+  "wrong side". Added `to_dead` and `wrong_side` to `compare()` (PR after #17); one rerun answers it,
+  and E005b's go-ahead depends on it (below).
+- **Decision:** none; a measuring tool. These numbers are the baseline E005c must beat.
+
+#### E005b — Team-from-movement classifier (design proposed; awaiting approval)
+
+- **Go-ahead condition, fixed now:** proceed if the E005a rerun shows `wrong_side` ≥ `to_dead` on
+  hidden frames (the loss is mostly the team, which E005b addresses). If `to_dead` dominates, stop
+  and propose a dead/alive fix for gaps first (Borghesi et al.: dead/alive, then team).
+- **Attack direction, label-free:** per half, the team whose players' mean x over the half is
+  lower defends the low-x goal. All x and x-velocities are then flipped so each team attacks +x.
+- **Per-team features at one frame** (outfield = all but the team's deepest player):
+  1. centroid x; 2. centroid x-velocity; 3. spread: std x; 4. std y; 5. compactness: mean
+  distance to the team centroid; 6. defensive-line height: x of the deepest outfield player;
+  7. backward running: players with x-velocity below −4 m/s (14.4 km/h, the usual "running"
+  band); 8. pressing distance: mean of the 3 smallest player-to-nearest-opponent distances.
+  Velocities from positions over ±0.2 s. Missing players are skipped; a team with fewer than
+  6 tracked players gives NaN (the model handles NaN natively).
+- **Context:** both teams' 8 features at offsets 0, ±0.4, ±1, ±2, ±4, ±8 s (11 offsets) →
+  176 features per frame. Acausal, since the decoder is offline.
+- **Symmetry, so no home prior is learned:** each training frame is used twice, as is and with
+  the teams swapped (label flipped); prediction averages p(x) and 1 − p(swap(x)), so swapping
+  the teams flips the probability exactly.
+- **Model:** scikit-learn `HistGradientBoostingClassifier` with library defaults (no tuning),
+  early stopping off, `random_state=0`, fitted and predicted under `threadpool_limits(1)` so the
+  result does not depend on the machine's thread count. New pinned dependency:
+  `scikit-learn==1.5.2` (supports numpy 2 and Python 3.12). `make reproduce` must stay byte-identical.
+- **Training labels (self-supervised, full match, no ground truth):** frames the E003 reference
+  calls alive, ball seen, nearest player within `near_m` (2 m) → that player's side; every 5th
+  such frame (neighbouring frames are near-duplicates).
+- **Half-to-half cross-validation:** fit on half 1, predict half 2, and the reverse. Reported
+  (new `tools/team_model_check.py`, aggregates only):
+  - (a) accuracy on held-out training-type frames;
+  - (b) accuracy on *all* held-out reference-alive frames, against the reference label: the
+    harder, more relevant set, since gap frames are not close-control frames;
+  - (c) accuracy on E005a's hidden frames (5 seeds), by gap length < 5 s, 5–15 s, > 15 s;
+  - (d) public window vs truth on alive frames with the ball untracked (~391 frames; indicative);
+  - share of frames with confident output (p ≥ 0.7 or ≤ 0.3) and accuracy within them.
+- **Gate (carried over):** drop E005 if (b) < 0.60 or (d) < 0.5. Otherwise E005c is designed
+  from these numbers.
+- **Tests (synthetic):** direction inference on a hand-built half; each feature on hand-built
+  positions; swap symmetry holds exactly; deterministic fit (two fits, identical predictions);
+  cross-validation never trains on the predicted half.
+- **Not doing:** a pre-trained model or weights in the repo (it is refit from the bundle on each
+  run); feature selection or hyperparameter search.
 
 #### E005c — Classifier probabilities as gap-only emissions (to be designed after E005b)
 

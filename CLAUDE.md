@@ -178,7 +178,7 @@ python starter/baseline.py                            # rebuild baselines (needs
 
 ## Current status (update at the end of every session)
 
-Last updated: 2026-10-21 (E005 roadmap after literature review).
+Last updated: 2026-10-21 (E005a measured; E005b proposed).
 
 - **Submitted model:** `hmm` (3-state Viterbi, `possession/decoder.py`), E001's evidence values
   plus E003's player-movement cue (players' median speed < 1.25 m/s over ±1 s).
@@ -194,10 +194,11 @@ Last updated: 2026-10-21 (E005 roadmap after literature review).
 - **E004 dropped before implementation** (its pre-set value rule: long untracked runs are too
   common in play over the full match). Its measurement is in EXPERIMENTS.md: the ball is lost only
   in long blocks, and 17% of predicted-alive frames have no ball, so no team evidence.
-- **Next step: E005a, masked-ball harness** (design in EXPERIMENTS.md, awaiting the human's OK).
-  Roadmap after it, one PR each, design approved first: E005b team-from-movement classifier,
-  E005c gap-only emissions, E006 visible-ball change rules, E007 restarts from player
-  configuration, E008 Metrica sample-data harness. Literature summary in EXPERIMENTS.md.
+- **E005a done** (masked-ball harness, PR #17): hiding the ball in play, E003 catches 11.5% of
+  side changes and loses ~34 possessions (275 → 241). Rerun pending with the dead/wrong-side split.
+- **Next step: E005b, team-from-movement classifier** (design in EXPERIMENTS.md, awaiting the
+  human's OK and the split rerun; go ahead only if wrong_side ≥ to_dead). Then E005c gap-only
+  emissions, E006 visible-ball change rules, E007 restarts, E008 Metrica sample-data harness.
 - **Queued:** Smart Tagging set pieces as restart evidence (fits with E007); a control-based team
   cue for transitions ~10 frames early; generator fixes in `make_synthetic.py` (players walk at
   stoppages; ball lost in runs > 10 s).
