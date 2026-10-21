@@ -178,7 +178,7 @@ python starter/baseline.py                            # rebuild baselines (needs
 
 ## Current status (update at the end of every session)
 
-Last updated: 2026-10-21 (E005c kept).
+Last updated: 2026-10-21 (E005c kept and submitted; E006 proposed).
 
 - **Submitted model:** `hmm` (3-state Viterbi, `possession/decoder.py`), E001's evidence values,
   E003's player-movement cue, and E005c's gap-only team cue from the team-from-movement
@@ -196,8 +196,8 @@ Last updated: 2026-10-21 (E005c kept).
 - **E004 dropped before implementation** (its pre-set value rule: long untracked runs are too
   common in play over the full match). Its measurement is in EXPERIMENTS.md: the ball is lost only
   in long blocks, and 17% of predicted-alive frames have no ball, so no team evidence.
-- **Next step: E006, visible-ball possession-change rules** (roadmap in EXPERIMENTS.md). Propose
-  the design first. Ball positions are noisy automatic tracking, so the papers' thresholds (e.g.
+- **Next step: E006, last-touch team on seen-ball frames** (design in EXPERIMENTS.md, awaiting the
+  human's OK; E006a measures first, gate before E006b). Ball positions are noisy automatic tracking, so the papers' thresholds (e.g.
   a 4 m/s² kick peak) must be measured on our data (inspect_cues-style) before use.
   Largest remaining gap loss: to_dead 0.141 on hidden frames. Then E007 restarts, E008 Metrica.
 - **Queued:** Smart Tagging set pieces as restart evidence (fits with E007); a control-based team

@@ -74,7 +74,7 @@ command and what to paste back.
 | E005a | 2026-10-21 | PR #17 | Masked-ball harness (yardstick for gaps) | measured: E003 catches 11.5% of side changes in gaps |
 | E005b | 2026-10-21 | PR #19 | Team-from-movement classifier, half-to-half CV | gate PASS: (b) 0.789, (d) 0.949 |
 | E005c | 2026-10-21 | PR #21 | Classifier probabilities as gap-only emissions | keep: 275 -> 308 possessions; gap change recall 0.115 -> 0.284 |
-| E006 | — | not yet | Visible-ball possession-change rules | planned |
+| E006 | — | not yet | Last-touch team on seen-ball frames (touch, duel rules) | design proposed: measure first |
 | E007 | — | not yet | Restart detection and attribution from player configuration | planned |
 | E008 | — | not yet | Metrica sample-data harness (development aid) | planned |
 
@@ -689,3 +689,57 @@ command and what to paste back.
 - **Decision:** keep. E005c is the submitted model from PR #21 (`make submission` by the human).
 - **Follow-ups:** `to_dead` 0.141 on hidden frames is now the largest single loss in gaps;
   E006 (visible-ball change rules) is next on the roadmap.
+
+### E006 — Last-touch team on seen-ball frames (design proposed; measure first)
+
+- **Status:** design proposed for approval. Nothing implemented.
+- **Problem:** on frames with the ball seen, the team cue is the side of the nearest player,
+  trusted by distance (0.873 right within 2 m, 0.647 at 2–5 m, none beyond: E002 measurements).
+  It is wrong in three recurring situations: a pass in flight passing close to an opponent, a
+  duel where both sides are near, and a loose ball. The ground truth names an *owner*, which
+  plausibly stays with the side of the last controlled touch while the ball travels.
+  Public-window hint (E005c harness table 2, tiny): around hidden frames the classifier beat the
+  nearest-player cue against the truth, so the seen-ball cue has room to improve.
+- **Hypothesis:** a "last touch" signal fits the owner definition better than "nearest player":
+  the side of the player who last touched the ball keeps it until a player touches it again
+  (Vidal-Codina et al.; Link & Hoernig). A duel (both sides within reach) does not flip it.
+- **Why measure first:** the papers use corrected or GPS tracking. Our ball is automatic, with
+  position jitter of the order of 0.2 m (DATA.md: lost on 41% of graded frames). An acceleration
+  threshold such as Link & Hoernig's 4 m/s² is far below what jitter alone produces when it is
+  differentiated twice at 25 fps, so every threshold is set from our own data, by rules fixed here.
+- **Touch detection, label-free:**
+  - ball smoothed with a Savitzky–Golay filter, 7 frames, order 2 (Vidal-Codina et al.), only
+    within runs of seen frames;
+  - velocity change Δv(t) = |v(t + 3) − v(t − 3)| in m/s (0.12 s either side);
+  - a *touch* is a local maximum of Δv above τ with a player within r = 1.0 m (the possession
+    zone of Vidal-Codina et al.);
+  - **τ by rule:** the 99th percentile of Δv on full-match seen frames where the nearest player is
+    more than 5 m away (ball in free flight: what noise and bounces alone produce). No labels.
+  - *duel:* players of both sides within r at the touch → no attribution (keep the previous side).
+- **Last-touch team:** carried forward from each attributed touch while the ball stays seen;
+  reset to unknown after any untracked run longer than 1 s (gaps belong to E005c's cue) and at
+  every predicted stoppage (pass 1 labels).
+- **E006a: measurement** (new `tools/inspect_touches.py`, human-run; aggregates only):
+  - full match, label-free: τ; touches per minute of play (football: roughly 15–25 attributed
+    touches per minute is plausible); share of touches in duels; share of seen alive frames with a
+    last-touch side; agreement with the nearest-player side;
+  - public window against the truth, on truth-alive seen frames: accuracy of the last-touch side
+    vs the nearest-player side on the *same* frames, overall and split by nearest distance (< 2 m,
+    2–5 m, > 5 m); n stated. This is a calibration of rates (as for every cue so far), not a
+    version choice.
+- **Gate to build E006b, fixed now:** last-touch accuracy on the public truth-alive seen frames at
+  least 0.03 above the nearest-player accuracy on the same frames, and coverage ≥ 0.5 of seen
+  alive frames. Otherwise drop E006 before it touches the model.
+- **E006b, if the gate passes:** on seen frames with a last-touch side, it replaces the
+  nearest-player cue (one team cue per frame, as now); elsewhere nothing changes. Its accuracy is
+  the public measured rate, rounded, by the same rule as E003's values.
+- **Pre-set criterion for E006b's real run:** keep if possessions stay within 290–400 with a mean
+  of 10–20 s, D share within 30–42%, and the public window passes (16 ± 3 possessions, macroF1 ≥
+  0.6880, i.e. E005c's 0.6980 − 0.01); revert otherwise. Stated limitation: there is no
+  full-match accuracy check for seen frames, so a pass means "not broken and better calibrated",
+  not "proven better".
+- **Tests (synthetic + hand-built):** Savitzky–Golay coefficients; a hand-built kick (ball turns
+  sharply next to a player) is a touch, a straight free flight is not; duel gives no attribution;
+  carry-forward resets after a > 1 s gap and at stoppages.
+- **Synthetic:** the generator's ball has a holder and passes, so touches exist; it checks the
+  code, not the thresholds (the generator's ball jitter is its own).
