@@ -77,7 +77,7 @@ command and what to paste back.
 | E006 | 2026-10-21 | PR #24, #25 | Last-touch team on seen-ball frames (touch, duel rules) | stop: Δv touches do not stand out on this ball track |
 | E007 | — | not yet | Restart detection and attribution from player configuration | planned |
 | E008 | — | not yet | Metrica sample-data harness (development aid) | planned |
-| E009 | 2026-10-21 | this PR | Last-control side on seen-ball frames (proximity, no velocity) | E009a built; awaiting real measurement |
+| E009 | 2026-10-21 | PR #28, this PR | Last-control side on seen-ball frames (proximity, no velocity) | E009a gate PASS (+0.085); E009b built, synthetic warns |
 
 ## Entry template
 
@@ -874,4 +874,29 @@ command and what to paste back.
 - **Command for the human** (after merge; a few minutes):
   `.venv/bin/python tools/inspect_touches.py --gt evaluation/gt/BAR-ATH_possession_gt_public.csv`;
   paste back the whole output.
-- **Real data:** pending. The gate decides whether E009b is built.
+- **E009a real data** (human-run; aggregates only): full match, 13.1 controls per minute of play,
+  held share 0.474, duel share 0.061, coverage 0.913, agreement with nearest player 0.794.
+  Public window, truth-alive seen frames with a last-control side (n = 5,348): last control
+  0.865 vs nearest player 0.780; < 2 m 0.890 vs 0.874; 2–5 m 0.820 vs 0.637; > 5 m 0.851 vs
+  0.665. Gate: +0.085 ≥ 0.03, coverage 0.913 ≥ 0.5 → **PASS**.
+- **E009b implemented as specified** (`control_acc = 0.87`, the measured 0.865 rounded; replaces
+  the nearest-player cue on seen frames with a known last-control side; pass-2 cue, with pass-1
+  stoppages resetting the side; `None` = E005c; 2 new tests, 133 pass).
+- **Synthetic warns** (5 full bundles): spellF1 0.429 → 0.374 (beyond the noise band), macroF1
+  0.650 → 0.634, possession ratio 0.96 → 0.99. Diagnosis on bundles 0–2:
+
+  | bundle | cue alone: control / nearest | wrong runs p50: control / nearest | decoded acc, seen alive: E005c / E009b |
+  |---|---|---|---|
+  | 0 | 0.841 / 0.788 | 2.0 s / 0.9 s | 0.893 / 0.849 |
+  | 1 | 0.870 / 0.797 | 2.0 s / 0.8 s | 0.909 / 0.869 |
+  | 2 | 0.853 / 0.797 | 2.1 s / 0.8 s | 0.904 / 0.855 |
+
+  Two flaws, neither specific to the generator: (1) **the gate compared the raw cue against the
+  raw nearest-player cue**, but the decoder already turns the nearest cue into ~0.90 on these
+  frames, above what last control reaches alone; (2) **last-control errors are long**: after a
+  turnover the old side is carried until the new side holds for > 10 frames (median wrong run
+  2 s vs 0.9 s). At 0.87 trust per frame and weight 0.2, a 2 s wrong run adds ~19 nats, three
+  times a switch cost (6.06), so the decoder follows the cue's errors. The evidence weight assumes
+  ~5-frame correlation; this cue's errors are correlated over ~50 frames.
+- **Decision:** pending the human's choice: run the pre-set real check anyway (its public
+  macroF1 guard tests frame accuracy directly), redesign with a correlation-aware trust, or stop.
