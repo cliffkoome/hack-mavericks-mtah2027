@@ -72,8 +72,8 @@ command and what to paste back.
 | E003 | 2026-10-21 | PR #11 | Player-movement cue (players walk at stoppages) | keep: D share 45.3% -> 36.7% |
 | E004 | 2026-10-21 | PR #13 | Long untracked-ball runs (> 10 s) as dead-ball evidence | drop: value rule gives alive rate 0.41 ≥ 0.15; not implemented |
 | E005a | 2026-10-21 | PR #17 | Masked-ball harness (yardstick for gaps) | measured: E003 catches 11.5% of side changes in gaps |
-| E005b | 2026-10-21 | this PR | Team-from-movement classifier, half-to-half CV | built; awaiting real check |
-| E005c | — | not yet | Classifier probabilities as gap-only emissions | planned |
+| E005b | 2026-10-21 | PR #19 | Team-from-movement classifier, half-to-half CV | gate PASS: (b) 0.789, (d) 0.949 |
+| E005c | — | not yet | Classifier probabilities as gap-only emissions | design proposed |
 | E006 | — | not yet | Visible-ball possession-change rules | planned |
 | E007 | — | not yet | Restart detection and attribution from player configuration | planned |
 | E008 | — | not yet | Metrica sample-data harness (development aid) | planned |
@@ -581,10 +581,62 @@ command and what to paste back.
 - **Command for the human** (after merge; a few minutes, ~1 GB RAM):
   `.venv/bin/python tools/team_model_check.py --gt evaluation/gt/BAR-ATH_possession_gt_public.csv`;
   paste back the whole output (table and gate line).
-- **Real data:** pending. The gate decides whether E005c is designed.
+- **Real data** (human-run; half-to-half; 8,913 training frames over both folds):
 
-#### E005c — Classifier probabilities as gap-only emissions (to be designed after E005b)
+  | frames | accuracy | n | confident share | confident accuracy |
+  |---|---|---|---|---|
+  | (a) training-type | 0.836 | 44,559 | 0.848 | 0.882 |
+  | (b) all reference-alive | **0.789** | 100,534 | 0.783 | 0.849 |
+  | (c) hidden, 0–5 s | 0.712 | 5,071 | 0.709 | 0.749 |
+  | (c) hidden, 5–15 s | 0.783 | 47,286 | 0.785 | 0.853 |
+  | (c) hidden, 15+ s | 0.844 | 31,358 | 0.839 | 0.887 |
+  | (d) public, truth-alive, untracked | **0.949** | 391 | 0.985 | 0.964 |
+  | public, truth-alive, all | 0.864 | 6,031 | 0.890 | 0.918 |
 
-- Gap-only so the nearest-player cue is never double-counted. How far to trust the
-  probabilities (calibration, shrinkage) is set at design from E005b's hold-out numbers, by a
-  rule written before the real run.
+  Gate: (b) 0.789 ≥ 0.60 and (d) 0.949 ≥ 0.5 → **PASS**. (d) is 391 frames from a handful of
+  possessions: indicative only.
+- **Leakage check** (a result this good must be checked): the classifier never sees the ball or
+  any ground truth; each half is predicted by a model fitted on the other half's *pipeline*
+  labels; the public window (first half) is predicted by the second-half model. Against the
+  truth it is *better* than against the reference (0.864 vs 0.789), which fits the reference's own
+  errors (it is itself ~86% right), not leakage. The level matches the literature (81–86%).
+- **Decision:** pass; E005c is designed from these numbers.
+
+#### E005c — Classifier probabilities as gap-only emissions (design proposed; awaiting approval)
+
+- **Change** (the only one against E003): a second team cue on frames where the ball is
+  untracked, from E005b's classifier. Frames with the ball seen keep the nearest-player cue
+  alone, so nothing is double-counted.
+- **Two passes, deterministic:** pass 1 is E003 exactly. Its labels train the classifier
+  half-to-half (`team_model.cross_half`, as validated: each half predicted by the other half's
+  model). Pass 2 decodes again with the gap cue added. Adds ~1–2 min per run.
+- **Emission**, in the existing team cue's form: with p = P(H) from the classifier, the side it
+  favours is "agree". The alive states score log(acc) for agreeing and log(1 − acc) otherwise,
+  and D scores log 0.5; then the usual `weight` (0.2).
+  - confident band (p ≥ 0.7 or ≤ 0.3): `gap_acc_strong`; otherwise `gap_acc_weak`.
+- **Value rule, fixed now:** the pooled accuracies on E005a's hidden frames (row (c), 3 bands,
+  83,715 frames), used as measured, no shrinkage:
+  - `gap_acc_strong = 0.86` (0.861, n = 67,024); `gap_acc_weak = 0.56` (0.564, n = 16,690).
+  - Why no shrinkage (the PR #15 draft shrank halfway): (c) is measured on gap-shaped frames
+    against the reference, which is itself wrong ~14% of the time, so it already understates
+    accuracy (public window: 0.864 against the truth vs 0.789 against the reference). The
+    evidence weight 0.2 already discounts correlated frames. Shrinking again would count the
+    same caution twice.
+  - What this means for the decoder: a confident frame adds 0.2 × log(0.86/0.14) = 0.36 to the
+    favoured side; one switch costs 6.06; so a change of side inside a gap needs ~17 confident
+    frames (0.7 s) against the carried side, and a flicker out and back ~34 (1.4 s). The
+    classifier sees ±8 s of context, so its output is smooth over seconds.
+  - `gap_acc_strong = None` switches the cue off (E003 exactly), tested.
+- **Pre-set criterion for the real run** (E005's, plus E005a's baseline):
+  - **keep** if possessions rise above 275 and stay ≤ 400, mean 10–20 s, D share within 30–42%,
+    the public window still passes (17 ± 3 possessions, macroF1 ≥ 0.6725), **and** the E005a
+    harness change recall rises above 0.167 (E003's 0.115 + 1 std);
+  - **revert** otherwise;
+  - secondary, not decisive: home share not moving clearly away from ~0.65; `to_dead` on hidden
+    frames reported (the gap cue makes alive more likely than D where it is confident).
+- **Tests (synthetic):** the cue is zero on frames with the ball seen; agreeing raises the
+  favoured side by the stated amount; `None` gives E003's labels; the pipeline output is
+  byte-identical across two runs.
+- **Commands for the human** (after merge): `run_pipeline.py --out evaluation/results/hm_hmm_e005c.csv`,
+  `run_evaluation.py --no-detail`, `tools/masked_harness.py --gt …`, `make reproduce`; paste back
+  the JSON summary, the board, the harness output and the reproduce line.

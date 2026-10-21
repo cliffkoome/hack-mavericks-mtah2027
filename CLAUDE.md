@@ -178,7 +178,7 @@ python starter/baseline.py                            # rebuild baselines (needs
 
 ## Current status (update at the end of every session)
 
-Last updated: 2026-10-21 (E005b built).
+Last updated: 2026-10-21 (E005b passed; E005c proposed).
 
 - **Submitted model:** `hmm` (3-state Viterbi, `possession/decoder.py`), E001's evidence values
   plus E003's player-movement cue (players' median speed < 1.25 m/s over ±1 s).
@@ -196,11 +196,11 @@ Last updated: 2026-10-21 (E005b built).
   in long blocks, and 17% of predicted-alive frames have no ball, so no team evidence.
 - **E005a done** (masked-ball harness, PR #17): hiding the ball in play, E003 catches 11.5% of
   side changes and loses ~34 possessions (275 → 241). Rerun pending with the dead/wrong-side split.
-- **E005b built** (team-from-movement classifier, `possession/team_model.py`; not in the pipeline
-  yet). Go-ahead met: on hidden frames wrong_side 0.264 ≥ to_dead 0.167. Synthetic (b) 0.65–0.69.
-- **Next step:** the human runs `tools/team_model_check.py` (gate: (b) ≥ 0.60, (d) ≥ 0.5). If it
-  passes, design E005c (gap-only emissions) from its numbers. Then E006–E008; dead-in-gaps (0.17
-  of hidden alive frames) is a candidate after E005c.
+- **E005b passed its gate on real data:** half-to-half (b) 0.789, hidden frames 0.80 (0.86 when
+  confident), public truth-alive 0.864. Leakage checked (none: no ball, no GT, other-half model).
+- **Next step: E005c**, the classifier as a gap-only team cue in a 2-pass pipeline (design in
+  EXPERIMENTS.md, awaiting the human's OK; values 0.86 / 0.56 by the recorded rule). Then E006–E008;
+  dead-in-gaps (0.17 of hidden alive frames) is a candidate after E005c.
 - **Queued:** Smart Tagging set pieces as restart evidence (fits with E007); a control-based team
   cue for transitions ~10 frames early; generator fixes in `make_synthetic.py` (players walk at
   stoppages; ball lost in runs > 10 s).
