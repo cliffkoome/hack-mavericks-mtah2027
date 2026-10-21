@@ -106,3 +106,41 @@ def test_detects_touches_on_synthetic_play(synthetic):
     side = touches.last_touch(spec.n_frames, frames, sides, features.ball_visible(tracking),
                               reference == D, spec.fps)
     assert (side[reference == D] == touches.NOBODY).all()
+
+
+def _held_tracking(ball, players, slot_team):
+    return FakeTracking(np.asarray(players, dtype=float), np.asarray(ball, dtype=float), slot_team)
+
+
+def test_held_needs_one_side_only_within_reach():
+    ball = [[0, 0]] * 4
+    players = [[[1, 0], [9, 0]],      # H within 2 m
+               [[9, 0], [1, 0]],      # A within 2 m
+               [[1, 0], [-1, 0]],     # both: a duel
+               [[9, 0], [-9, 0]]]     # nobody
+    side, duel = touches.held(_held_tracking(ball, players, [H, A]), 2.0)
+    assert side.tolist() == [H, A, touches.NOBODY, touches.NOBODY]
+    assert duel.tolist() == [False, False, True, False]
+
+
+def test_control_needs_more_than_ten_held_frames():
+    nobody = touches.NOBODY
+    side = np.array([nobody] * 5 + [H] * 10 + [nobody] * 5 + [A] * 11 + [nobody] * 3,
+                    dtype=np.int8)
+    frames, sides = touches.controls(side)
+    assert frames.tolist() == [20] and sides.tolist() == [A]
+
+
+def test_a_fly_by_at_pass_speed_is_never_control():
+    n = 80
+    ball = np.column_stack([-15 + 10 * np.arange(n) / FPS, np.zeros(n)])  # 10 m/s along x
+    players = np.tile([[[0.0, 0.0], [0.0, 30.0]]], (n, 1, 1))              # straight through H
+    side, _ = touches.held(_held_tracking(ball, players, [H, A]), 2.0)
+    assert (side == H).sum() <= touches.CONTROL_FRAMES
+    assert len(touches.controls(side)[0]) == 0
+
+
+def test_controls_are_in_time_order():
+    side = np.array([A] * 12 + [touches.NOBODY] * 2 + [H] * 12 + [A] * 11, dtype=np.int8)
+    frames, sides = touches.controls(side)
+    assert frames.tolist() == [0, 14, 26] and sides.tolist() == [A, H, A]
