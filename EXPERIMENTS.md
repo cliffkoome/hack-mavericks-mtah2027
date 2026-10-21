@@ -74,7 +74,7 @@ command and what to paste back.
 | E005a | 2026-10-21 | PR #17 | Masked-ball harness (yardstick for gaps) | measured: E003 catches 11.5% of side changes in gaps |
 | E005b | 2026-10-21 | PR #19 | Team-from-movement classifier, half-to-half CV | gate PASS: (b) 0.789, (d) 0.949 |
 | E005c | 2026-10-21 | PR #21 | Classifier probabilities as gap-only emissions | keep: 275 -> 308 possessions; gap change recall 0.115 -> 0.284 |
-| E006 | 2026-10-21 | PR #24 | Last-touch team on seen-ball frames (touch, duel rules) | E006a: detector found ~1 touch on real data; diagnosing |
+| E006 | 2026-10-21 | PR #24, #25 | Last-touch team on seen-ball frames (touch, duel rules) | stop: Δv touches do not stand out on this ball track |
 | E007 | — | not yet | Restart detection and attribution from player configuration | planned |
 | E008 | — | not yet | Metrica sample-data harness (development aid) | planned |
 
@@ -789,3 +789,31 @@ command and what to paste back.
   The accuracy gate (last touch ≥ nearest + 0.03, coverage ≥ 0.5) is unchanged and still decides.
 - **Command for the human** (after merge): the same command as before; paste back the whole
   output, now with table 0.
+- **Diagnostics, real data** (table 0, human-run, 91,844 seen decoded frames; aggregates only):
+
+  | | value |
+  |---|---|
+  | Δv computable / in seen runs ≥ 9 frames | 0.988 / 1.000 |
+  | zero-movement steps; step p50 / p90 | 0.001; 0.203 / 0.567 m |
+  | nearest < 1 m: share of seen; Δv p50 / p90 / p99 | 0.289; 1.2 / 3.7 / 6.1 m/s |
+  | nearest 1–2 m | 0.232; 1.4 / 4.4 / 6.9 m/s |
+  | nearest 2–5 m | 0.298; 1.6 / 4.8 / 8.2 m/s |
+  | nearest > 5 m (free flight) | 0.181; 1.2 / 3.9 / 9.3 m/s |
+  | Δv peaks above τ per minute; nearest at peak < 1 / 1–2 / 2–3 / 3–5 / > 5 m | 0.30; 0.03 / 0.13 / 0.23 / 0.23 / 0.39 |
+
+- **Reading:** suspects (2) and (3) are ruled out (Δv is computable almost everywhere; the track
+  does not hold positions). Suspect (1) formally fires (peaks sit mostly beyond 1 m), but its fix
+  cannot help: there are only 0.3 peaks above τ per minute, so even a 2 m reach would give
+  ~0.05 touches per minute. The real finding is beneath the rules: **near a player, the ball's
+  velocity change is no larger than in free flight** (p99 6.1 m/s within 1 m vs 9.3 m/s beyond
+  5 m). The ball track appears smoothed at source, so kicks do not stand out, while the largest
+  jumps happen away from players (39% of peaks have nobody within 5 m: tracking jumps). The
+  detector's premise, that a touch is a sharp velocity change next to a player, is false on
+  this tracking.
+- **Decision:** stop E006 (velocity-based touches). Not tuned further: any new threshold would be
+  chosen after seeing this result. The code stays in the repo as a documented negative result;
+  the model never used it (the submission is E005c).
+- **What survives:** the synthetic result says "last side in control" can beat "nearest player"
+  away from the ball (2–5 m, > 5 m), and on the real match 48% of seen frames have nobody within
+  2 m. A proximity-based "last control" cue, needing no velocity, is a separate experiment
+  if chosen (proposed in the next entry only on the human's go-ahead).
