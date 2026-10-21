@@ -178,7 +178,7 @@ python starter/baseline.py                            # rebuild baselines (needs
 
 ## Current status (update at the end of every session)
 
-Last updated: 2026-10-21.
+Last updated: 2026-10-21 (E004 planned).
 
 - **Submitted model:** `hmm` (3-state Viterbi, `possession/decoder.py`), E001's evidence values
   plus E003's player-movement cue (players' median speed < 1.25 m/s over ±1 s).
@@ -191,9 +191,10 @@ Last updated: 2026-10-21.
 - **Known weakness:** the synthetic generator's players barely slow down at stoppages (18% of
   dead frames slow vs 62% real), so synthetic scores under-rate E003. Fix it in `make_synthetic.py`
   as its own change before relying on synthetic runs for later cues.
-- **Next step: E004, untracked-ball runs > 10 s as a dead-ball cue** (0% of alive vs 25% of dead
-  frames measured, E003). Write its design and pre-set criterion in EXPERIMENTS.md first, then
-  implement it as the only change.
+- **Next step: E004, untracked-ball runs > 10 s as a dead-ball cue.** Planned in EXPERIMENTS.md
+  with its value rule and criterion. Waiting on the human's full-match measurement
+  (`tools/inspect_cues.py` table 4); then set the values by the recorded rule, or drop E004 if
+  the rule says so.
 - **Queued after E004:** Smart Tagging set pieces as restart evidence (Team semantics in E002);
   a control-based team cue for transitions ~10 frames early.
 - **Deliverables still to do:** `hack_mavericks.md` technical document; make the repo public before
