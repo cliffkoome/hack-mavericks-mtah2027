@@ -13,6 +13,9 @@ Each frame contributes independent cues, each a probability with a plain meaning
   slow      whether the players are walking (median speed over +/- 1 s). Players stay tracked
             when the ball does not, so this also argues *against* D in open play with the ball
             lost, where the visible cue alone over-calls it (E003).
+  gap team  where the ball is untracked: the side the team-from-movement classifier favours
+            (p_home, team_model.py), trusted by how confident it is (E005c). Frames with the
+            ball seen keep the nearest-player cue alone, so no frame has two team cues.
 
 The values in config.py come from documented facts about the tracking (DATA.md) and football
 priors, never from fitting the public window. Consecutive frames are far from independent, so
@@ -25,8 +28,11 @@ import numpy as np
 from possession import H, A, D, features
 
 
-def log_emissions(tracking, spec, params):
-    """(n, 3) array: log P(evidence at frame t | state), columns in H, A, D order."""
+def log_emissions(tracking, spec, params, p_home=None):
+    """(n, 3) array: log P(evidence at frame t | state), columns in H, A, D order.
+
+    p_home: per-frame P(H has the ball) from team_model, NaN where unknown; None = no gap cue.
+    """
     team, distance = features.nearest_player(tracking)
     visible = features.ball_visible(tracking)
     speed = features.ball_speed(tracking, spec.fps, params["speed_lag"])
@@ -61,10 +67,23 @@ def log_emissions(tracking, spec, params):
         walking = features.players_median_speed(tracking, spec.fps)
         alive_dead += _binary(walking < params["slow_speed"], params["slow_alive"],
                               params["slow_dead"], where=~np.isnan(walking))
+    if p_home is not None and params["gap_acc_strong"] is not None:
+        _add_gap_team(out, p_home, missing, params)
     out[:, H] += alive_dead[:, 0]
     out[:, A] += alive_dead[:, 0]
     out[:, D] += alive_dead[:, 1]
     return params["weight"] * out
+
+
+def _add_gap_team(out, p_home, missing, params):
+    """Team cue from the classifier on untracked frames, in the nearest-player cue's form."""
+    cue = missing & ~np.isnan(p_home) & (p_home != 0.5)
+    sure = (p_home >= params["gap_conf"]) | (p_home <= 1 - params["gap_conf"])
+    accuracy = np.where(sure, params["gap_acc_strong"], params["gap_acc_weak"])[cue]
+    favoured = np.where(p_home[cue] > 0.5, H, A)
+    for state in (H, A):
+        out[cue, state] += np.where(favoured == state, np.log(accuracy), np.log(1 - accuracy))
+    out[cue, D] += np.log(0.5)
 
 
 def _binary(flag, p_alive, p_dead, where=None):

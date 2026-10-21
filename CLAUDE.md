@@ -178,7 +178,7 @@ python starter/baseline.py                            # rebuild baselines (needs
 
 ## Current status (update at the end of every session)
 
-Last updated: 2026-10-21 (E005b passed; E005c proposed).
+Last updated: 2026-10-21 (E005c built; real run pending).
 
 - **Submitted model:** `hmm` (3-state Viterbi, `possession/decoder.py`), E001's evidence values
   plus E003's player-movement cue (players' median speed < 1.25 m/s over ±1 s).
@@ -198,8 +198,9 @@ Last updated: 2026-10-21 (E005b passed; E005c proposed).
   side changes and loses ~34 possessions (275 → 241). Rerun pending with the dead/wrong-side split.
 - **E005b passed its gate on real data:** half-to-half (b) 0.789, hidden frames 0.80 (0.86 when
   confident), public truth-alive 0.864. Leakage checked (none: no ball, no GT, other-half model).
-- **Next step: E005c**, the classifier as a gap-only team cue in a 2-pass pipeline (design in
-  EXPERIMENTS.md, awaiting the human's OK; values 0.86 / 0.56 by the recorded rule). Then E006–E008;
+- **E005c built** (gap-only team cue, 2-pass pipeline; config `gap_acc_strong` 0.86 / weak 0.56,
+  None = E003). The default config now runs E005c; if its real run fails the criterion, set
+  `gap_acc_strong` to None (revert) before `make submission`. Real run pending. Then E006–E008;
   dead-in-gaps (0.17 of hidden alive frames) is a candidate after E005c.
 - **Queued:** Smart Tagging set pieces as restart evidence (fits with E007); a control-based team
   cue for transitions ~10 frames early; generator fixes in `make_synthetic.py` (players walk at

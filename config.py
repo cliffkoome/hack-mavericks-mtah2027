@@ -46,6 +46,12 @@ PARAMS = {
         "slow_speed": 1.25,         # m/s; None = no cue (E001)
         "slow_alive": 0.10,         # P(players slow | alive); 0.104 measured
         "slow_dead": 0.62,          # P(players slow | dead); 0.624 measured
+        # E005c: on frames with the ball untracked, the team-from-movement classifier
+        # (team_model.py, E005b) as a second team cue. Accuracies measured on E005a's hidden
+        # frames, used as measured (EXPERIMENTS.md, E005c: the value rule).
+        "gap_conf": 0.7,            # p >= this or <= 1 - this is a confident call
+        "gap_acc_strong": 0.86,     # P(classifier right | confident); 0.861; None = off (E003)
+        "gap_acc_weak": 0.56,       # same, not confident; 0.564 measured
         "weight": 0.2,              # evidence tempering: ~1 independent reading per 5 frames
     },
 }
