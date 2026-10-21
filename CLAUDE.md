@@ -178,34 +178,38 @@ python starter/baseline.py                            # rebuild baselines (needs
 
 ## Current status (update at the end of every session)
 
-Last updated: 2026-10-21 (E009a built).
+Last updated: 2026-10-21.
 
-- **Submitted model:** `hmm` (3-state Viterbi, `possession/decoder.py`), E001's evidence values,
-  E003's player-movement cue, and E005c's gap-only team cue from the team-from-movement
-  classifier (`possession/team_model.py`, two-pass pipeline). Real data, full match: 308
-  possessions, mean 13.3 s, D 35.4% of graded frames, sha256 `a8ee1b28…`. Public window
-  (correctness only): 16 possessions (truth 17), spellF1 0.4242, macroF1 0.6980. Floor: 0.2433.
-- **Verified on the real data:** `make verify-baseline` IDENTICAL ×4 (reader, alignment, slot teams).
-- **History:** E001 kept (D over-called at 45.3%); E002 dropped (D 8%); E003 kept (D 36.7%);
-  E004 dropped before code; E005a harness; E005b classifier passed its gate (0.789); E005c kept
-  (possessions 275 -> 308, gap change recall 0.115 -> 0.284). Details in EXPERIMENTS.md.
-- **Known weakness of the synthetic generator:** players barely slow down at stoppages (18% of
-  dead frames slow vs 62% real), and the ball is lost in short bursts (median 0.7 s vs 7.2 s real)
-  with a weak shape signal. Synthetic scores therefore under-rate both E003 and E005c. Fix it in
-  `make_synthetic.py` as its own change before relying on synthetic runs for later cues.
-- **E004 dropped before implementation** (its pre-set value rule: long untracked runs are too
-  common in play over the full match). Its measurement is in EXPERIMENTS.md: the ball is lost only
-  in long blocks, and 17% of predicted-alive frames have no ball, so no team evidence.
-- **E006 stopped** (velocity-based touches): on this ball track a touch is no sharper than free
-  flight (Δv p99 6.1 m/s near players vs 9.3 m/s in free flight); ~1 touch found in the match.
-  Negative result recorded in EXPERIMENTS.md; the model never used it.
-- **Next step: E009, last-control side on seen-ball frames.** E009a built (`touches.held`,
-  `touches.controls`; `inspect_touches.py --cue control`). Held = own player within 2 m, no
-  opponent; control = more than 10 held frames. The human runs the tool; E006's gate decides
-  E009b. Then the dead-in-gaps loss or E007.
-  Largest remaining gap loss: to_dead 0.141 on hidden frames. Then E007 restarts, E008 Metrica.
-- **Queued:** Smart Tagging set pieces as restart evidence (fits with E007); a control-based team
-  cue for transitions ~10 frames early; generator fixes in `make_synthetic.py` (players walk at
-  stoppages; ball lost in runs > 10 s).
+- **Submitted CSV:** E005c. `submissions/hack_mavericks.csv`, sha256 `a8ee1b28…`: 308 possessions,
+  mean 13.3 s, D 35.4% of graded frames. Public window (correctness only): 16 possessions
+  (truth 17), spellF1 0.4242, macroF1 0.6980. Floor to beat: 0.2433.
+- **⚠ main's default config is NOT the submitted model.** PR #29 (E009b, draft) was merged, so
+  `config.py` has `control_acc = 0.87`: the last-control cue replaces nearest-player on seen
+  frames. Never validated on real data; synthetic says it is worse (spellF1 0.429 → 0.374).
+  **First thing next session:** ask the human: set `control_acc = None` (E005c exactly;
+  recommended) or run E009b's pre-set real check once. Do not run `make submission` before that.
+- **The model (E005c):** 3-state Viterbi (`possession/decoder.py`); evidence = nearest-player team
+  cue, ball-tracked/outside/still cues (E001 values), player-movement cue (E003), and a gap-only
+  team cue from the team-from-movement classifier (`possession/team_model.py`, HistGradient-
+  Boosting, half-to-half, two-pass pipeline). `make reproduce` byte-identical.
+- **Experiments** (EXPERIMENTS.md has every number and the rules): E001 keep; E002 drop; E003 keep;
+  E004 drop before code; E005a masked-ball harness (tool); E005b classifier gate PASS (0.789);
+  E005c keep (possessions 275 → 308, gap change recall 0.115 → 0.284); E006 stop (velocity touches
+  not detectable on this ball track); E009a last-control gate PASS (+0.085) but E009b gives no gain
+  on synthetic at any trust setting: stop recommended.
+- **Tools the human runs** (aggregates only): `tools/inspect_cues.py`, `tools/masked_harness.py`,
+  `tools/team_model_check.py`, `tools/inspect_touches.py [--cue touch]`, `make verify-baseline`.
+- **Known weaknesses:**
+  - In gaps: the model calls the ball dead on 14% of hidden in-play frames (harness `to_dead`
+    0.141), now the largest single loss there.
+  - Synthetic generator: players barely slow at stoppages, the ball is lost in short bursts
+    (median 0.7 s vs 7.2 s real), the shape signal is weak. Synthetic under-rates E003 and E005c;
+    fix `make_synthetic.py` as its own change before trusting synthetic runs for new cues.
+- **Lessons that bind new cues:** fix values and gates before the real run; gate a seen-frame cue
+  against the decoded labels on the same frames, not the raw cue it competes with; check that a
+  carried cue's errors are not much longer than the ~5-frame correlation the weight assumes.
+- **Next step candidates** (human chooses): dead-in-gaps (a dead/alive cue from player movement
+  inside gaps, Lang et al.); E007 restarts from player configuration + Smart Tagging set pieces;
+  E008 Metrica sample-data harness; generator fixes.
 - **Deliverables still to do:** `hack_mavericks.md` technical document; make the repo public before
   17 November 2026; final `make reproduce` + `validate_submission.py` per "Before every submission".
