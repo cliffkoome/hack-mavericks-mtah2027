@@ -39,6 +39,13 @@ PARAMS = {
         "still_speed": 0.3,         # m/s below which a seen ball counts as still
         "still_alive": 0.05,        # P(still | alive); 0.009 measured
         "still_dead": 0.5,          # P(still | dead); 0.009 measured -- this cue does not work
+        # E003: players walk at a stoppage and stay tracked when the ball does not. Cue = the
+        # players' median speed, mean over +/- 1 s, below slow_speed. Values measured with
+        # tools/inspect_cues.py (EXPERIMENTS.md, E003); 1.25 has the best dead/alive ratio (6.0)
+        # with useful recall.
+        "slow_speed": 1.25,         # m/s; None = no cue (E001)
+        "slow_alive": 0.10,         # P(players slow | alive); 0.104 measured
+        "slow_dead": 0.62,          # P(players slow | dead); 0.624 measured
         "weight": 0.2,              # evidence tempering: ~1 independent reading per 5 frames
     },
 }

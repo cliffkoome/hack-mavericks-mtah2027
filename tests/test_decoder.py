@@ -113,6 +113,7 @@ class FakeTracking:
         self.players = np.asarray(players, dtype=float)
         self.ball = np.asarray(ball, dtype=float)
         self.slot_team = np.asarray(slot_team, dtype=np.int8)
+        self.player_speed = np.full(self.players.shape[:2], np.nan)
 
 
 SPEC = spec_module.GameSpec(n_frames=4, fps=FPS, pitch=(100.0, 50.0), graded_blocks=((0, 3),),
@@ -183,6 +184,46 @@ def test_players_median_speed_and_rolling_mean():
     assert features.players_median_speed(tracking, 0)[[0, 2]].tolist() == [2.0, 4.0]
     assert np.isnan(features.players_median_speed(tracking, 0)[1])
     assert features.players_median_speed(tracking, 1).tolist() == [2.0, 3.0, 4.0]
+
+
+def _walking_tracking(speeds):
+    """One player always next to a visible ball, at a constant speed per stretch of frames."""
+    n = len(speeds)
+    tracking = FakeTracking([[[50, 25]]] * n, [[50.5, 25]] * n, [H])
+    tracking.player_speed = np.asarray(speeds, dtype=float)[:, None]
+    return tracking
+
+
+def test_slow_players_favour_dead_and_fast_players_alive():
+    spec = spec_module.GameSpec(n_frames=200, fps=FPS, pitch=(100.0, 50.0),
+                                graded_blocks=((0, 199),), kickoffs=(0,))
+    tracking = _walking_tracking([0.5] * 100 + [4.0] * 100)
+    with_cue = evidence.log_emissions(tracking, spec, evidence_params())
+    without = evidence.log_emissions(tracking, spec, evidence_params(slow_speed=None))
+    shift = (with_cue[:, D] - with_cue[:, H]) - (without[:, D] - without[:, H])
+    assert shift[0] == pytest.approx(np.log(0.62 / 0.10))     # walking: towards D
+    assert shift[-1] == pytest.approx(np.log(0.38 / 0.90))    # running: away from D
+    np.testing.assert_allclose(with_cue[:, H] - with_cue[:, A], without[:, H] - without[:, A])
+
+
+def test_slow_cue_is_unknown_where_no_player_is_tracked():
+    spec = spec_module.GameSpec(n_frames=200, fps=FPS, pitch=(100.0, 50.0),
+                                graded_blocks=((0, 199),), kickoffs=(0,))
+    tracking = _walking_tracking([np.nan] * 200)
+    np.testing.assert_array_equal(evidence.log_emissions(tracking, spec, evidence_params()),
+                                  evidence.log_emissions(tracking, spec,
+                                                         evidence_params(slow_speed=None)))
+
+
+def test_no_slow_speed_ignores_the_players_speed():
+    """slow_speed = None is E001: the evidence does not depend on how fast anyone runs."""
+    spec = spec_module.GameSpec(n_frames=200, fps=FPS, pitch=(100.0, 50.0),
+                                graded_blocks=((0, 199),), kickoffs=(0,))
+    walking = evidence.log_emissions(_walking_tracking([0.5] * 200), spec,
+                                     evidence_params(slow_speed=None))
+    unknown = evidence.log_emissions(_walking_tracking([np.nan] * 200), spec,
+                                     evidence_params(slow_speed=None))
+    np.testing.assert_array_equal(walking, unknown)
 
 
 def test_weight_scales_everything():

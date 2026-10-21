@@ -29,13 +29,16 @@ EVAL_DIR = os.path.join(ROOT, ".synthetic", "eval")
 
 
 def variants():
-    """name -> params. The defaults, the decoder, and the decoder's evidence weight either side."""
+    """name -> params. The defaults, the decoder, its evidence weight either side, and E001."""
     out = {"vote": dict(copy.deepcopy(PARAMS), model="vote"),
            "hmm": dict(copy.deepcopy(PARAMS), model="hmm")}
     for weight in (0.1, 0.4):
         params = dict(copy.deepcopy(PARAMS), model="hmm")
         params["evidence"]["weight"] = weight
         out["hmm w={}".format(weight)] = params
+    no_slow = dict(copy.deepcopy(PARAMS), model="hmm")
+    no_slow["evidence"]["slow_speed"] = None
+    out["hmm no-slow (E001)"] = no_slow
     return out
 
 

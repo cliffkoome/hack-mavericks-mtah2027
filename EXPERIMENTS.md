@@ -26,7 +26,7 @@ versions without a leaderboard, and it becomes the backbone of the technical doc
 | E000 | 2026-10-20 | b7292ff | Reproduce the reference baseline with our own code | keep: IDENTICAL ×4 on real data |
 | E001 | 2026-10-20 | PR #5 | 3-state Viterbi decoder instead of the window vote | keep: default model since PR #5 |
 | E002 | 2026-10-20 | PR #8 | Recalibrate the evidence cues against measured rates | drop: D share 45% -> 8%; reverted in PR #9 |
-| E003 | — | not yet | Player-movement cue (players walk at stoppages) | planned: next step |
+| E003 | 2026-10-21 | this PR | Player-movement cue (players walk at stoppages) | pending: real-data run |
 
 ## Entry template
 
@@ -197,10 +197,10 @@ versions without a leaderboard, and it becomes the backbone of the technical doc
   `inspect_cues.py` rows before it is switched on. Then Smart Tagging set pieces as restart
   evidence, using the Team semantics above.
 
-### E003 — Player-movement cue (planned; specified before implementation)
+### E003 — Player-movement cue
 
-- **Status:** planned. Nothing implemented yet. This entry fixes the design and the criterion
-  *before* the code and the real-data run.
+- **Date / author / commit:** 2026-10-21, Hack Mavericks, this PR. Design and criterion were fixed
+  in PR #10, before the code; the code follows them with no value changed.
 - **Hypothesis:** players stay tracked when the ball does not. In play they jog and sprint; at a
   stoppage they walk. A cue on the players' median speed should add dead-ball evidence where it
   belongs and, just as important, evidence *against* D during open play with the ball lost, which
@@ -227,6 +227,30 @@ versions without a leaderboard, and it becomes the backbone of the technical doc
     player is tracked;
   - added to the alive/dead part of `evidence.log_emissions` like the other `_binary` cues;
     every other value stays at E001's.
+- **Change** (`evidence.py`, `config.py`): new keys `slow_speed = 1.25`, `slow_alive = 0.10`,
+  `slow_dead = 0.62`; `slow_speed = None` switches the cue off, giving E001's labels exactly
+  (tested). The window is ±1 s (`spec.fps`), the one `inspect_cues.py` measured. Tests: walking
+  players shift D − H by log(0.62/0.10), running players by log(0.38/0.90), the team margin is
+  untouched, and frames with no tracked player get no slow-cue evidence. `synthetic_eval.py` gains an
+  `hmm no-slow (E001)` variant.
+- **Synthetic** (5 full seeds; correctness only):
+
+  | variant | spellF1 | macroF1 | D predicted | D true |
+  |---|---|---|---|---|
+  | E001 (no slow cue) | 0.551 | 0.835 | 0.331 | 0.324 |
+  | E003, real-data rates (0.10 / 0.62) | 0.458 | 0.688 | **0.112** | 0.324 |
+  | slow cue, generator rates (0.01 / 0.18) | 0.573 | 0.855 | 0.307 | 0.324 |
+
+  The drop comes from the generator, not the code. Synthetic players barely slow down at a
+  stoppage: 18% of dead frames fall below 1.25 m/s, against 62% measured on the real window
+  (alive: 0.1% vs 10%). With `slow_dead = 0.62`, the 82% of synthetic dead frames that are not
+  slow each count as evidence against D. With the generator's own rates the cue does what it
+  should: D share stays right and nothing breaks. The third row checks the mechanism and was
+  not used to choose a value. Values stay at the measured real rates, as specified.
+- **Risk this exposes for the real run:** the cue trusts that the public window's rates
+  (0.624 dead) hold over the whole match. If stoppages over the match are much less often
+  "walking" than in that window, D collapses as it does on the synthetic data, and the pre-set
+  criterion's "D share below 30%" revert catches it.
 - **Pre-set criterion for the real run:**
   - **keep** if the full-match D share moves from 45.3% into 30–42% while possessions stay
     ≥ 200 with a 10–20 s mean;
@@ -235,3 +259,7 @@ versions without a leaderboard, and it becomes the backbone of the technical doc
 - **Commands for the human after merging:**
   `run_pipeline.py --out evaluation/results/hm_hmm_e003.csv`, then
   `run_evaluation.py --no-detail`; paste back the JSON summary and the board.
+- **Full-match plausibility** (human-run, aggregates only): pending.
+- **Decision:** pending the real run; the pre-set criterion above decides.
+- **Follow-ups:** make the generator's players walk at stoppages (a `make_synthetic.py` change,
+  kept out of this experiment so E003 stays a single change).
