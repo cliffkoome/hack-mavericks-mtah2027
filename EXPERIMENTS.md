@@ -77,7 +77,7 @@ command and what to paste back.
 | E006 | 2026-10-21 | PR #24, #25 | Last-touch team on seen-ball frames (touch, duel rules) | stop: Δv touches do not stand out on this ball track |
 | E007 | — | not yet | Restart detection and attribution from player configuration | planned |
 | E008 | — | not yet | Metrica sample-data harness (development aid) | planned |
-| E009 | 2026-10-21 | PR #28, this PR | Last-control side on seen-ball frames (proximity, no velocity) | E009a gate PASS (+0.085); E009b built, synthetic warns |
+| E009 | 2026-10-21 | PR #28, #29 | Last-control side on seen-ball frames (proximity, no velocity) | E009a PASS; E009b on main untested on real data; redesign shows no gain: stop recommended |
 
 ## Entry template
 
@@ -898,5 +898,27 @@ command and what to paste back.
   2 s vs 0.9 s). At 0.87 trust per frame and weight 0.2, a 2 s wrong run adds ~19 nats, three
   times a switch cost (6.06), so the decoder follows the cue's errors. The evidence weight assumes
   ~5-frame correlation; this cue's errors are correlated over ~50 frames.
-- **Decision:** pending the human's choice: run the pre-set real check anyway (its public
-  macroF1 guard tests frame accuracy directly), redesign with a correlation-aware trust, or stop.
+- **Human's choice:** redesign the trust. Before asking for a real run, a prototype on the same
+  5 synthetic bundles (not committed; correctness only, not a selector):
+
+  | variant | spellF1 | macroF1 | possession ratio | decoded acc, seen alive |
+  |---|---|---|---|---|
+  | E005c (no control cue) | 0.429 ± 0.028 | 0.650 | 0.96 | 0.899 |
+  | replace nearest, ×1.0 (E009b as merged) | 0.374 ± 0.028 | 0.634 | 0.99 | 0.857 |
+  | replace nearest, ×0.1 (5 / 50 frames) | 0.313 ± 0.031 | 0.614 | 0.73 | 0.826 |
+  | add to nearest, ×1.0 | 0.366 ± 0.028 | 0.636 | 1.06 | 0.857 |
+  | add to nearest, ×0.1 | 0.425 ± 0.025 | 0.651 | 0.96 | 0.897 |
+
+  No trust setting beats E005c. Replacing the nearest cue loses its strong within-2 m evidence,
+  and scaling down only removes more; adding it at full trust follows its long errors; adding it
+  weakly just reproduces E005c. The decoder already extracts from the nearest cue what last
+  control offers. The real public window shows the same raw gap as synthetic (0.865 vs 0.780,
+  synthetic ~0.84 vs ~0.79), so no real gain is expected either.
+- **State of main:** PR #29 (draft) was merged, so the default config runs E009b
+  (`control_acc = 0.87`), not validated on real data. The submitted CSV stays E005c
+  (`a8ee1b28…`) until `make submission` is run again.
+- **Recommendation:** stop E009 and set `control_acc = None` (back to E005c exactly), or, if the
+  human prefers evidence, run the pre-set real check once and revert on failure.
+- **Lesson** (for any future seen-frame cue): gate against the *decoded* labels on the same
+  frames, not against the raw cue it competes with, and check the error-run length of carried
+  cues against the ~5-frame correlation the evidence weight assumes.
