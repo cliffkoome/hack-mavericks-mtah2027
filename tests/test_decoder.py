@@ -263,7 +263,8 @@ def test_control_cue_replaces_the_nearest_side_where_known():
     ball = [[11, 10], [11, 10], [np.nan, np.nan], [30, 10]]   # near H, near H, unseen, far
     tracking = FakeTracking(players, ball, [H])
     control = np.array([A, -1, A, A], dtype=np.int8)
-    with_cue = evidence.log_emissions(tracking, SPEC, evidence_params(), control=control)
+    with_cue = evidence.log_emissions(tracking, SPEC, evidence_params(control_acc=0.87),
+                                      control=control)
     without = evidence.log_emissions(tracking, SPEC, evidence_params())
     assert with_cue[0, A] - with_cue[0, H] == pytest.approx(np.log(0.87 / 0.13))  # replaced
     np.testing.assert_array_equal(with_cue[[1, 2]], without[[1, 2]])  # unknown; ball unseen
