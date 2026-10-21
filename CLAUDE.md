@@ -178,7 +178,7 @@ python starter/baseline.py                            # rebuild baselines (needs
 
 ## Current status (update at the end of every session)
 
-Last updated: 2026-10-21 (E004 dropped).
+Last updated: 2026-10-21 (E005 planned).
 
 - **Submitted model:** `hmm` (3-state Viterbi, `possession/decoder.py`), E001's evidence values
   plus E003's player-movement cue (players' median speed < 1.25 m/s over ±1 s).
@@ -194,9 +194,10 @@ Last updated: 2026-10-21 (E004 dropped).
 - **E004 dropped before implementation** (its pre-set value rule: long untracked runs are too
   common in play over the full match). Its measurement is in EXPERIMENTS.md: the ball is lost only
   in long blocks, and 17% of predicted-alive frames have no ball, so no team evidence.
-- **Next step (to choose):** Smart Tagging set pieces as restart evidence (Team semantics in
-  E002), or a team model for frames without a ball, from player configuration (approach plan
-  step 4; the 17% above). Plan it in EXPERIMENTS.md with a pre-set criterion first.
+- **Next step: E005, team from player shape where the ball is untracked.** Planned in
+  EXPERIMENTS.md (design, value rule, drop conditions, criterion). Build `tools/team_shape_check.py`
+  and the shape features next; the human runs it; then set values by the rule or drop.
+- **Then:** Smart Tagging set pieces as restart evidence (Team semantics in E002).
 - **Queued:** a control-based team cue for transitions ~10 frames early; generator fixes in
   `make_synthetic.py` (players walk at stoppages; ball lost in runs > 10 s).
 - **Deliverables still to do:** `hack_mavericks.md` technical document; make the repo public before
