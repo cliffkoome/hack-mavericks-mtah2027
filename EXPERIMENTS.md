@@ -74,7 +74,7 @@ command and what to paste back.
 | E005a | 2026-10-21 | PR #17 | Masked-ball harness (yardstick for gaps) | measured: E003 catches 11.5% of side changes in gaps |
 | E005b | 2026-10-21 | PR #19 | Team-from-movement classifier, half-to-half CV | gate PASS: (b) 0.789, (d) 0.949 |
 | E005c | 2026-10-21 | PR #21 | Classifier probabilities as gap-only emissions | keep: 275 -> 308 possessions; gap change recall 0.115 -> 0.284 |
-| E006 | — | not yet | Last-touch team on seen-ball frames (touch, duel rules) | design proposed: measure first |
+| E006 | 2026-10-21 | this PR | Last-touch team on seen-ball frames (touch, duel rules) | E006a tool built; awaiting real measurement |
 | E007 | — | not yet | Restart detection and attribution from player configuration | planned |
 | E008 | — | not yet | Metrica sample-data harness (development aid) | planned |
 
@@ -690,9 +690,9 @@ command and what to paste back.
 - **Follow-ups:** `to_dead` 0.141 on hidden frames is now the largest single loss in gaps;
   E006 (visible-ball change rules) is next on the roadmap.
 
-### E006 — Last-touch team on seen-ball frames (design proposed; measure first)
+### E006 — Last-touch team on seen-ball frames (design approved in PR #23; E006a built)
 
-- **Status:** design proposed for approval. Nothing implemented.
+- **Status:** E006a (measurement) implemented; E006b waits for the gate.
 - **Problem:** on frames with the ball seen, the team cue is the side of the nearest player,
   trusted by distance (0.873 right within 2 m, 0.647 at 2–5 m, none beyond: E002 measurements).
   It is wrong in three recurring situations: a pass in flight passing close to an opponent, a
@@ -743,3 +743,26 @@ command and what to paste back.
   carry-forward resets after a > 1 s gap and at stoppages.
 - **Synthetic:** the generator's ball has a holder and passes, so touches exist; it checks the
   code, not the thresholds (the generator's ball jitter is its own).
+- **E006a implemented as designed** (`possession/touches.py`, `tools/inspect_touches.py`,
+  `tests/test_touches.py`, 8 tests; 127 pass). Detail made concrete: a touch is the frame where Δv
+  peaks; alive frames and stoppages come from the current pipeline (E005c).
+- **Synthetic** (5 full bundles; correctness only):
+
+  | bundle | τ (m/s) | attributed touches / min | coverage | last touch | nearest player | gate |
+  |---|---|---|---|---|---|---|
+  | 0 | 16.5 | 6.4 | 0.491 | 0.878 | 0.782 | FAIL (coverage) |
+  | 1 | 18.9 | 4.8 | 0.438 | 0.852 | 0.791 | FAIL (coverage) |
+  | 2 | 18.5 | 4.3 | 0.384 | 0.838 | 0.790 | FAIL (coverage) |
+  | 3 | 17.5 | 5.4 | 0.448 | 0.842 | 0.788 | FAIL (coverage) |
+  | 4 | 17.6 | 5.6 | 0.473 | 0.851 | 0.792 | FAIL (coverage) |
+
+  On the same frames, last touch beats nearest player by 0.05–0.10 on every bundle; the gain is in
+  the 2–5 m and > 5 m bands (bundle 0: 0.835 vs 0.606 and 0.886 vs 0.591), while within 2 m the two
+  agree (0.889 vs 0.900). Coverage fails because few touches are found: the generator's ball
+  jitter puts the free-flight threshold at ~17 m/s, so only hard touches pass (4–6 per minute
+  against a plausible 15–25), and its short gaps reset the side often. The real ball's jitter is
+  its own, so the real run decides; the gate is not changed.
+- **Command for the human** (after merge; a few minutes):
+  `.venv/bin/python tools/inspect_touches.py --gt evaluation/gt/BAR-ATH_possession_gt_public.csv`;
+  paste back the whole output.
+- **Real data:** pending.
