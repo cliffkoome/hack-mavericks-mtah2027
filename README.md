@@ -1,3 +1,33 @@
+# Hack Mavericks — our entry
+
+This is team **Hack Mavericks**' fork of the challenge repository. It adds a possession model that
+regenerates our submission, `hack_mavericks.csv`, byte-for-byte from the data bundle.
+
+- **Technical document:** [hack_mavericks.md](hack_mavericks.md): approach, assets used and
+  dropped, possession rules, limitations, reproduction.
+- **Experiment log:** [EXPERIMENTS.md](EXPERIMENTS.md): every change, its pre-set criterion and
+  its result.
+- **Model:** a 3-state (home / away / dead) Viterbi decoder over tracking-only evidence, with a
+  self-supervised team-from-movement classifier for the frames where the ball is lost
+  (`possession/`, hyperparameters in `config.py`).
+
+### Reproduce our submission
+
+```bash
+python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt   # or: make venv (pyenv 3.12.7)
+# unpack the match bundle into ./data, or set MTAH_DATA_DIR
+.venv/bin/python run_pipeline.py      # -> submissions/hack_mavericks.csv, prints its sha256
+.venv/bin/python evaluation/validate_submission.py submissions/hack_mavericks.csv
+make reproduce                        # optional: builds twice, requires byte-identical files
+```
+
+Expected sha256: `a8ee1b287dadc674…`. CPU only, about 20 s, about 1 GB of RAM. `make test` runs the
+test suite on synthetic data. No match data is in this repository.
+
+The organisers' original README follows.
+
+---
+
 # More than a Hack 2027 — Phase 1: Ball Possession
 
 **Organised by [Metrica Sports](https://metrica-sports.com), [FC Barcelona](https://www.fcbarcelona.com)

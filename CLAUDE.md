@@ -178,8 +178,9 @@ python starter/baseline.py                            # rebuild baselines (needs
 
 ## Current status (update at the end of every session)
 
-Last updated: 2026-10-22 (end of an autonomous session on branch `autonomous-mode`, not merged).
-Deadline 17 November 2026: 26 days left.
+Last updated: 2026-10-22. Deadline 17 November 2026: 26 days left.
+**Model frozen at E005c (2026-10-22). Technical document written: `hack_mavericks.md`.** The PR
+from `autonomous-mode` brings main back to the submitted config and adds the document.
 
 - **Submitted CSV:** E005c. `submissions/hack_mavericks.csv`, sha256 `a8ee1b28…`: 308 possessions,
   mean 13.3 s, D 35.4% of graded frames, home share 0.594. Public window (correctness only):
@@ -201,8 +202,8 @@ Deadline 17 November 2026: 26 days left.
   gain over E005c at any trust; code kept, off). 2026-10-22 (autonomous): E010a dead/alive
   classifier gate FAIL; E010c drop (classifier replaces slow cue in gaps: to_dead 0.141 → 0.045
   but D share 26.8%, change recall 0.209); E010d drop, narrowly (confident-alive beside slow
-  cue: to_dead 0.100, D share 34.4%, change recall 0.249 vs limit 0.264); E007a tool built, real
-  run not done; G2 synthetic generator v2. All new cues off (`gap_dead_alive`,
+  cue: to_dead 0.100, D share 34.4%, change recall 0.249 vs limit 0.264); E007a stop (D already
+  near 86% of set-piece starts); G2 synthetic generator v2. All new cues off (`gap_dead_alive`,
   `gap_alive_alive` = None).
 - **Tools the human runs** (print aggregates only, safe to paste back): `tools/inspect_cues.py`,
   `tools/masked_harness.py --gt …`, `tools/team_model_check.py --gt …`,
@@ -222,25 +223,24 @@ Deadline 17 November 2026: 26 days left.
 
 ### Next session: start here
 
-**Human, before or at the start of the next session:**
-1. Review branch `autonomous-mode` (6 commits on top of `fix/e009-off`; EXPERIMENTS.md E010,
-   E007a, G2). Decide whether to PR it; the submitted model is unchanged on it.
-2. Run the one real-data command the session could not:
-   `.venv/bin/python tools/inspect_restarts.py --gt evaluation/gt/BAR-ATH_possession_gt_public.csv`
-   and paste back its output (shares and counts per set-piece Type).
-3. Tell Claude which next step to take (below), or say "continue" for the recommended one.
-3. Repo hygiene when convenient: delete merged branches on GitHub, including
-   `revert-29-feat/e009b-control-cue` (its PR #30 was closed unmerged).
+**Human, to submit:**
+1. Merge the `autonomous-mode` PR. Then on main: `make reproduce` (expect `byte-identical: OK`)
+   and `make submission` (expect sha256 `a8ee1b28…`). A fresh venv from `requirements.txt` has
+   already rebuilt that sha (2026-10-22).
+2. Make the repo public; `git status` must show no data files.
+3. Google Form: upload `submissions/hack_mavericks.csv` (as `hack_mavericks.csv`) and
+   `hack_mavericks.md`, plus the public repo URL. Validate the exact file you upload.
+4. Repo hygiene when convenient: delete merged branches, including
+   `revert-29-feat/e009b-control-cue`.
 
 **Claude, at the start of the next session:** read this status and the end of EXPERIMENTS.md;
 check that `config.py` has `control_acc = None` and `gap_acc_strong = 0.86`; then propose the
 chosen step's design (values, gate, criterion) for the human's OK before any code.
 
-**Next step candidates** (recommended order):
-1. **E007b restarts (recommended next):** once E007a's numbers are in, design the set-piece cue
-   (EXPERIMENTS.md E007a sketches it) with its gate and criterion fixed before the run.
-2. **E010d revisit (optional):** closest miss; only with more masking seeds and a criterion
-   re-stated before the run, never by moving this one's limit.
+**Next step candidates** (only if the freeze is lifted; recommended order):
+1. **E010d revisit:** closest miss; only with more masking seeds and a criterion re-stated
+   before the run, never by moving this one's limit. (E007b restarts: not built, E007a.)
+2. If any model change lands, update `hack_mavericks.md` (sha, results, tables) with it.
 3. **Diagnose v2 synthetic macroF1** (hmm 0.54 vs vote 0.63), then the shape signal in G2.
 4. **E008 Metrica sample-data harness** (development aid only, never validation).
 
