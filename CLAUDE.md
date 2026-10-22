@@ -178,14 +178,17 @@ python starter/baseline.py                            # rebuild baselines (needs
 
 ## Current status (update at the end of every session)
 
-Last updated: 2026-10-21 (end of session). Deadline 17 November 2026: 27 days left.
+Last updated: 2026-10-22. Deadline 17 November 2026: 26 days left.
+**Model frozen at E005c (2026-10-22). Technical document written: `hack_mavericks.md`.** The PR
+from `autonomous-mode` brings main back to the submitted config and adds the document.
 
 - **Submitted CSV:** E005c. `submissions/hack_mavericks.csv`, sha256 `a8ee1b28…`: 308 possessions,
   mean 13.3 s, D 35.4% of graded frames, home share 0.594. Public window (correctness only):
   16 possessions (truth 17), spellF1 0.4242, macroF1 0.6980. Floor to beat: 0.2433.
 - **main's config = the submitted model (E005c).** E009b's control cue is switched off
-  (`control_acc = None`); on synthetic data the pipeline is byte-identical to the E005c code.
-  The real-data confirmation (`a8ee1b28…`) is the first item below.
+  (`control_acc = None`). Confirmed on real data 2026-10-22: `make submission` on
+  `fix/e009-off` and on `autonomous-mode` both give `a8ee1b28…`. `fix/e009-off` is not yet
+  merged into main.
 - **The model (E005c):** 3-state Viterbi (`possession/decoder.py`). Evidence: nearest-player team
   cue and ball tracked/outside/still cues (E001 values), player-movement cue (E003), and a
   gap-only team cue from the team-from-movement classifier (`possession/team_model.py`,
@@ -196,16 +199,23 @@ Last updated: 2026-10-21 (end of session). Deadline 17 November 2026: 27 days le
   drop; E003 keep; E004 drop before code; E005a masked-ball harness (tool); E005b classifier gate
   PASS (0.789); E005c keep (possessions 275 → 308, gap change recall 0.115 → 0.284); E006 stop
   (velocity touches not detectable on this ball track); E009 stop (last-control: gate PASS, but no
-  gain over E005c at any trust; code kept, off).
+  gain over E005c at any trust; code kept, off). 2026-10-22 (autonomous): E010a dead/alive
+  classifier gate FAIL; E010c drop (classifier replaces slow cue in gaps: to_dead 0.141 → 0.045
+  but D share 26.8%, change recall 0.209); E010d drop, narrowly (confident-alive beside slow
+  cue: to_dead 0.100, D share 34.4%, change recall 0.249 vs limit 0.264); E007a stop (D already
+  near 86% of set-piece starts); G2 synthetic generator v2. All new cues off (`gap_dead_alive`,
+  `gap_alive_alive` = None).
 - **Tools the human runs** (print aggregates only, safe to paste back): `tools/inspect_cues.py`,
   `tools/masked_harness.py --gt …`, `tools/team_model_check.py --gt …`,
-  `tools/inspect_touches.py --gt … [--cue touch]`, `make verify-baseline`, `make submission`,
-  `make reproduce`.
+  `tools/inspect_touches.py --gt … [--cue touch]`, `tools/dead_model_check.py --gt …`,
+  `tools/gap_dead_why.py`, `tools/inspect_restarts.py --gt …`, `make verify-baseline`,
+  `make submission`, `make reproduce`.
 - **Known weaknesses:**
   - In gaps the model calls the ball dead on 14% of hidden in-play frames (harness `to_dead`
-    0.141): the largest single loss left in gaps.
-  - Synthetic generator: players barely slow at stoppages, the ball is lost in short bursts
-    (median 0.7 s vs 7.2 s real), weak shape signal. Synthetic under-rates E003 and E005c.
+    0.141). Diagnosed 2026-10-22: 88% of those frames have the slow-players cue firing (slow play
+    with the ball unseen). Every fix tried so far (E010c/d) costs side-change recall in gaps.
+  - Synthetic v2 (G2) fixes walking at stoppages and gap lengths; the shape signal is still weak,
+    and hmm macroF1 on v2 (0.54) is below the vote's (0.63), not yet diagnosed.
 - **Lessons that bind new cues:** fix values, gates and criteria before the real run; gate a cue
   against the *decoded* labels on the same frames, not the raw cue it competes with; check that a
   carried cue's errors are not much longer than the ~5-frame correlation the weight assumes;
@@ -213,26 +223,25 @@ Last updated: 2026-10-21 (end of session). Deadline 17 November 2026: 27 days le
 
 ### Next session: start here
 
-**Human, before or at the start of the next session:**
-1. Pull main, then confirm main reproduces the submitted file:
-   `make reproduce` (expect `byte-identical: OK`) and `make submission` (expect sha256
-   `a8ee1b28…`). If the sha differs, paste the JSON summary; do not submit that file.
-2. Tell Claude which next step to take (below), or say "continue" for the recommended one.
-3. Repo hygiene when convenient: delete merged branches on GitHub, including
-   `revert-29-feat/e009b-control-cue` (its PR #30 was closed unmerged).
+**Human, to submit:**
+1. Merge the `autonomous-mode` PR. Then on main: `make reproduce` (expect `byte-identical: OK`)
+   and `make submission` (expect sha256 `a8ee1b28…`). A fresh venv from `requirements.txt` has
+   already rebuilt that sha (2026-10-22).
+2. Make the repo public; `git status` must show no data files.
+3. Google Form: upload `submissions/hack_mavericks.csv` (as `hack_mavericks.csv`) and
+   `hack_mavericks.md`, plus the public repo URL. Validate the exact file you upload.
+4. Repo hygiene when convenient: delete merged branches, including
+   `revert-29-feat/e009b-control-cue`.
 
 **Claude, at the start of the next session:** read this status and the end of EXPERIMENTS.md;
 check that `config.py` has `control_acc = None` and `gap_acc_strong = 0.86`; then propose the
 chosen step's design (values, gate, criterion) for the human's OK before any code.
 
-**Next step candidates** (recommended order):
-1. **Dead-in-gaps (recommended next):** a dead/alive cue from player movement inside long gaps
-   (Lang et al.: in/out of play from players alone), aimed at the 14% `to_dead` loss. Measure
-   first with the masked harness; gate against the decoded labels.
-2. **E007 restarts:** detect restarts from player configuration plus Smart Tagging set pieces
-   (Team semantics in E002) to sharpen dead-ball edges and who restarts.
-3. **Generator fixes** (`make_synthetic.py`): players walk at stoppages, long ball gaps, a
-   stronger shape signal, so synthetic runs stop under-rating real gains.
+**Next step candidates** (only if the freeze is lifted; recommended order):
+1. **E010d revisit:** closest miss; only with more masking seeds and a criterion re-stated
+   before the run, never by moving this one's limit. (E007b restarts: not built, E007a.)
+2. If any model change lands, update `hack_mavericks.md` (sha, results, tables) with it.
+3. **Diagnose v2 synthetic macroF1** (hmm 0.54 vs vote 0.63), then the shape signal in G2.
 4. **E008 Metrica sample-data harness** (development aid only, never validation).
 
 **Deliverables, with dates:**

@@ -18,6 +18,10 @@ Each frame contributes independent cues, each a probability with a plain meaning
   gap team  where the ball is untracked: the side the team-from-movement classifier favours
             (p_home, team_model.py), trusted by how confident it is (E005c). Frames with the
             ball seen keep the nearest-player cue alone, so no frame has two team cues.
+  gap dead  where the ball is untracked: the dead/alive-from-movement classifier's call
+            (p_dead, dead_model.py) replaces the slow cue, so no frame has two movement cues
+            (E010c, off by default). Or (E010d, off): its confident "alive" call
+            (p_dead <= 0.3) added beside the slow cue.
 
 The values in config.py come from documented facts about the tracking (DATA.md) and football
 priors, never from fitting the public window. Consecutive frames are far from independent, so
@@ -30,11 +34,12 @@ import numpy as np
 from possession import H, A, D, features
 
 
-def log_emissions(tracking, spec, params, p_home=None, control=None):
+def log_emissions(tracking, spec, params, p_home=None, control=None, p_dead=None):
     """(n, 3) array: log P(evidence at frame t | state), columns in H, A, D order.
 
     p_home: per-frame P(H has the ball) from team_model, NaN where unknown; None = no gap cue.
     control: per-frame last-control side (H/A, negative where unknown); None = no control cue.
+    p_dead: per-frame P(dead) from dead_model, NaN where unknown; None = no gap dead cue.
     """
     team, distance = features.nearest_player(tracking)
     visible = features.ball_visible(tracking)
@@ -72,10 +77,18 @@ def log_emissions(tracking, spec, params, p_home=None, control=None):
         + _binary(speed < params["still_speed"], params["still_alive"], params["still_dead"],
                   where=~np.isnan(speed))
     )
+    gap_dead = np.zeros(len(missing), dtype=bool)
+    if p_dead is not None and params["gap_dead_alive"] is not None:
+        gap_dead = missing & ~np.isnan(p_dead)
+        alive_dead += _binary(p_dead >= 0.5, params["gap_dead_alive"], params["gap_dead_dead"],
+                              where=gap_dead)
+    if p_dead is not None and params["gap_alive_alive"] is not None:
+        alive_dead += _binary(p_dead <= 0.3, params["gap_alive_alive"],
+                              params["gap_alive_dead"], where=missing & ~np.isnan(p_dead))
     if params["slow_speed"] is not None:
         walking = features.players_median_speed(tracking, spec.fps)
         alive_dead += _binary(walking < params["slow_speed"], params["slow_alive"],
-                              params["slow_dead"], where=~np.isnan(walking))
+                              params["slow_dead"], where=~np.isnan(walking) & ~gap_dead)
     if p_home is not None and params["gap_acc_strong"] is not None:
         _add_gap_team(out, p_home, missing, params)
     out[:, H] += alive_dead[:, 0]

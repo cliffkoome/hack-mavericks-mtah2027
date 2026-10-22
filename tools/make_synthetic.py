@@ -49,7 +49,7 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
 from games import GAME, GAMES, asset_paths  # noqa: E402
 
-GENERATOR_VERSION = 1
+GENERATOR_VERSION = 2
 
 # Params
 # Frame layout. "full" reproduces the real match exactly (DATA.md, "Which frames are graded"),
@@ -90,6 +90,9 @@ GOAL_DEAD_S = (45.0, 70.0)
 FORMATION = np.array([[5, 34], [22, 10], [20, 26], [20, 42], [22, 58], [40, 18], [38, 34],
                       [40, 50], [58, 12], [60, 34], [58, 56]], dtype=np.float64)
 MAX_PLAYER_SPEED = 8.0     # m/s
+# v2: at a stoppage players walk (E003 measured the real median player speed below 1.25 m/s on
+# 62% of dead frames); only someone running to a restart spot goes faster.
+DEAD_PLAYER_SPEED = 1.5   # m/s
 # Wander around the anchor is smooth: noise drives a velocity (AR(1), per frame), and the offset it
 # integrates into is pulled back towards zero. Noise straight on position would make every target
 # jump each frame and every player sprint at the speed cap.
@@ -103,9 +106,12 @@ DROPOUT_EVERY_S, DROPOUT_FRAMES = 30.0, (2, 25)
 DUPLICATE_EVERY_S, DUPLICATE_FRAMES = 300.0, (10, 60)
 # Missing ball: target probability by context, realised by a two-state Markov chain whose missing
 # runs last BALL_MISSING_RUN frames on average, so gaps come in bursts as they do in real tracking.
-BALL_MISSING_BASE, BALL_MISSING_AIR, BALL_MISSING_CROWD = 0.22, 0.35, 0.2
+# v2: in-play targets lowered with the longer runs so ~17% of alive frames are untracked, the
+# real share (E005a); v1's 0.22/0.35/0.2 gave about half.
+BALL_MISSING_BASE, BALL_MISSING_AIR, BALL_MISSING_CROWD = 0.08, 0.2, 0.1
 BALL_MISSING_DEAD, BALL_MISSING_OFF = 0.8, 0.6
-BALL_MISSING_RUN = 25.0
+# v2: 180 frames = 7.2 s, the real median gap in play (E005a); v1's 25 gave 0.7 s.
+BALL_MISSING_RUN = 180.0
 
 # The example row in DATA.md, used as the base camera; it is the only homography value published.
 BASE_HOMOGRAPHY = np.array([[1822.663, -511.2005, 44.48168],
@@ -280,7 +286,10 @@ def simulate_motion(rng, spec, possessions, stoppages):
     frames = np.array(sorted(keys))
     points = np.array([keys[f] for f in frames])
     track = np.column_stack([np.interp(np.arange(n), frames, points[:, k]) for k in (0, 1)])
-    players = _players(rng, spec, track, holder, runners, bases)
+    dead = np.zeros(n, dtype=bool)
+    for stoppage in stoppages:
+        dead[stoppage["start"]:stoppage["stop"]] = True
+    players = _players(rng, spec, track, holder, runners, bases, dead)
     return track, players, in_air, holder, passes
 
 
@@ -328,8 +337,9 @@ def _stoppage_ball(rng, event, ball, keys, runners, base):
     return spot
 
 
-def _players(rng, spec, ball, holder, runners, bases):
-    """Integrate 22 players towards per-frame targets at a capped speed."""
+def _players(rng, spec, ball, holder, runners, bases, dead):
+    """Integrate 22 players towards per-frame targets at a capped speed (walking while dead,
+    except players running to a spot)."""
     n = spec["n_video_frames"]
     half_split = spec["graded_blocks"][0][1] + 1 + (
         spec["graded_blocks"][1][0] - spec["graded_blocks"][0][1] - 1) // 2
@@ -368,13 +378,14 @@ def _players(rng, spec, ball, holder, runners, bases):
     out = np.empty((n, 22, 2))
     position = targets[0].copy()
     wander, velocity = np.zeros((22, 2)), np.zeros((22, 2))
-    step_max = MAX_PLAYER_SPEED / FPS
+    step_run, step_walk = MAX_PLAYER_SPEED / FPS, DEAD_PLAYER_SPEED / FPS
     for t in range(n):
         velocity = WANDER_VEL_PHI * velocity + innovations[t]
         wander = WANDER_PULL * wander + velocity
         goal = targets[t] + wander * free[t][:, None]
         step = goal - position
         distance = np.hypot(step[:, 0], step[:, 1])
+        step_max = np.where(dead[t] & free[t], step_walk, step_run)
         position = position + step * np.minimum(1.0, step_max / np.maximum(distance, 1e-9))[:, None]
         out[t] = position
     return out

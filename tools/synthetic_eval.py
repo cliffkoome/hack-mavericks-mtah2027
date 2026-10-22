@@ -11,6 +11,7 @@ bound on the real gain. Never pick a value because it wins here (EXPERIMENTS.md)
 
 import argparse
 import copy
+import json
 import os
 import sys
 
@@ -39,12 +40,21 @@ def variants():
     no_gap = dict(copy.deepcopy(PARAMS), model="hmm")
     no_gap["evidence"]["gap_acc_strong"] = None
     out["hmm no-gap (E003)"] = no_gap
+    gap_dead = dict(copy.deepcopy(PARAMS), model="hmm")
+    gap_dead["evidence"]["gap_dead_alive"] = 0.02
+    out["hmm gap-dead (E010c)"] = gap_dead
     return out
 
 
 def bundle(size, seed):
+    """A cached bundle, regenerated when it was written by another generator version."""
     out = os.path.join(EVAL_DIR, "{}-seed{}".format(size, seed))
-    if not os.path.isfile(os.path.join(out, spec_module.SYNTHETIC_SPEC)):
+    path = os.path.join(out, spec_module.SYNTHETIC_SPEC)
+    version = None
+    if os.path.isfile(path):
+        with open(path) as handle:
+            version = json.load(handle).get("generator_version")
+    if version != make_synthetic.GENERATOR_VERSION:
         make_synthetic.generate(out, seed=seed, size=size)
     return out
 
