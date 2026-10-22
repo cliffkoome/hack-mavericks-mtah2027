@@ -20,7 +20,8 @@ Each frame contributes independent cues, each a probability with a plain meaning
             ball seen keep the nearest-player cue alone, so no frame has two team cues.
   gap dead  where the ball is untracked: the dead/alive-from-movement classifier's call
             (p_dead, dead_model.py) replaces the slow cue, so no frame has two movement cues
-            (E010c, off by default).
+            (E010c, off by default). Or (E010d, off): its confident "alive" call
+            (p_dead <= 0.3) added beside the slow cue.
 
 The values in config.py come from documented facts about the tracking (DATA.md) and football
 priors, never from fitting the public window. Consecutive frames are far from independent, so
@@ -81,6 +82,9 @@ def log_emissions(tracking, spec, params, p_home=None, control=None, p_dead=None
         gap_dead = missing & ~np.isnan(p_dead)
         alive_dead += _binary(p_dead >= 0.5, params["gap_dead_alive"], params["gap_dead_dead"],
                               where=gap_dead)
+    if p_dead is not None and params["gap_alive_alive"] is not None:
+        alive_dead += _binary(p_dead <= 0.3, params["gap_alive_alive"],
+                              params["gap_alive_dead"], where=missing & ~np.isnan(p_dead))
     if params["slow_speed"] is not None:
         walking = features.players_median_speed(tracking, spec.fps)
         alive_dead += _binary(walking < params["slow_speed"], params["slow_alive"],

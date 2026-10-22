@@ -80,6 +80,7 @@ command and what to paste back.
 | E009 | 2026-10-21 | PR #28, #29, this PR | Last-control side on seen-ball frames (proximity, no velocity) | stop: no gain over E005c at any trust; code kept, off (`control_acc = None`) |
 | E010a | 2026-10-22 | autonomous-mode | Dead/alive-from-movement classifier (gate) | gate FAIL: bal 0.754 < 0.80 on seen frames; 0.784 vs decoded 0.871 on truth gaps |
 | E010c | 2026-10-22 | autonomous-mode | Classifier replaces the slow cue in gaps | drop: to_dead 0.141 -> 0.045 but change recall 0.284 -> 0.209, D share 35.4% -> 26.8% |
+| E010d | 2026-10-22 | autonomous-mode | Classifier's confident-alive call beside the slow cue | drop (narrow): to_dead 0.141 -> 0.100, D share 34.4%, but change recall 0.284 -> 0.249 (limit -0.02) |
 | E007a | 2026-10-22 | autonomous-mode | Set-piece tags vs our dead-ball edges (measurement) | tool built; real run left to the human |
 
 ## Entry template
@@ -1076,6 +1077,25 @@ Fixed before any run (autonomous session):
   stoppage-recall floor below catches the failure mode it would cause.
 - **Keep criterion:** exactly E010c's three (masked `to_dead` −0.03 with `change_recall` not
   down > 0.02; D share 31–45%, possessions 250–400, mean 10–20 s; public truth-gap D floor 0.643).
+- **Measured rates** (scratch run, ball-untracked decoded frames vs pass-1 reference):
+  P(confidently alive | alive) 0.968 (n 19,455), P(confidently alive | dead) 0.300 (n 44,624);
+  wired in as `gap_alive_alive = 0.97`, `gap_alive_dead = 0.30`.
+- **Real data** (Claude-run; aggregates only):
+
+  | | E005c (off) | E010d (on) | criterion |
+  |---|---|---|---|
+  | masked `to_dead` | 0.141 ± 0.025 | 0.100 ± 0.010 | ≤ 0.111 ✓ |
+  | masked `change_recall` | 0.284 ± 0.044 | 0.249 ± 0.077 | ≥ 0.264 ✗ |
+  | masked wrong_side / agreement | 0.161 / 0.700 | 0.161 / 0.739 | — |
+  | D share / possessions / mean | 35.4% / 308 / 13.3 s | 34.4% / 305 / 13.7 s | ✓ |
+  | public truth D frames, ball untracked: called D | 0.743 | 0.723 | ≥ 0.643 ✓ |
+
+- **Decision:** **drop** by the pre-set criterion (change recall −0.035 against a −0.02 limit).
+  It is the closest of the three: the D share holds, `to_dead` falls by 0.041, agreement on hidden
+  frames rises 0.700 → 0.739, and the recall drop is inside its own seed spread (± 0.077). The
+  criterion was set before the run and it decides; `gap_alive_alive = None` stays. If the human
+  wants to revisit it, the honest next step is more masking seeds to shrink the recall spread,
+  with the criterion re-stated *before* that run.
 
 ---
 

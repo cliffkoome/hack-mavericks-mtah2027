@@ -34,7 +34,7 @@ def _hmm(tracking, spec, params):
     ev = params["evidence"]
     log_emit = evidence.log_emissions(tracking, spec, ev)
     first = decoder.decode_match(log_emit, spec, params["decoder"])
-    gap_dead = ev["gap_dead_alive"] is not None
+    gap_dead = ev["gap_dead_alive"] is not None or ev["gap_alive_alive"] is not None
     if ev["gap_acc_strong"] is None and ev["control_acc"] is None and not gap_dead:
         return first
     labels = rules.finalize(first, spec)
