@@ -223,7 +223,7 @@ Deadline 17 November 2026: 26 days left.
 ### Next session: start here
 
 **Human, before or at the start of the next session:**
-1. Review branch `autonomous-mode` (4 commits on top of `fix/e009-off`; EXPERIMENTS.md E010,
+1. Review branch `autonomous-mode` (6 commits on top of `fix/e009-off`; EXPERIMENTS.md E010,
    E007a, G2). Decide whether to PR it; the submitted model is unchanged on it.
 2. Run the one real-data command the session could not:
    `.venv/bin/python tools/inspect_restarts.py --gt evaluation/gt/BAR-ATH_possession_gt_public.csv`
