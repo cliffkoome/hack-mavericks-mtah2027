@@ -81,7 +81,7 @@ command and what to paste back.
 | E010a | 2026-10-22 | autonomous-mode | Dead/alive-from-movement classifier (gate) | gate FAIL: bal 0.754 < 0.80 on seen frames; 0.784 vs decoded 0.871 on truth gaps |
 | E010c | 2026-10-22 | autonomous-mode | Classifier replaces the slow cue in gaps | drop: to_dead 0.141 -> 0.045 but change recall 0.284 -> 0.209, D share 35.4% -> 26.8% |
 | E010d | 2026-10-22 | autonomous-mode | Classifier's confident-alive call beside the slow cue | drop (narrow): to_dead 0.141 -> 0.100, D share 34.4%, but change recall 0.284 -> 0.249 (limit -0.02) |
-| E007a | 2026-10-22 | autonomous-mode | Set-piece tags vs our dead-ball edges (measurement) | tool built; real run left to the human |
+| E007a | 2026-10-22 | autonomous-mode | Set-piece tags vs our dead-ball edges (measurement) | stop: D already near 86% of set-piece starts (line 0.7); E007b not built |
 
 ## Entry template
 
@@ -1062,6 +1062,26 @@ fires in play, so the direct test is the decoder with the cue swapped. Fixed bef
   team evidence over the first seconds after, with trust = the measured `own_after` on the truth
   window, shrunk towards 0.5 for the small count. Gate and criterion to be written then, before
   the real run.
+- **Real data** (human-run 2026-10-22; shares and counts over tags only):
+
+  | Type | tags | dead_before | dead_near | own_after | to_alive (s) |
+  |---|---|---|---|---|---|
+  | corner kick | 12 | 1.00 | 1.00 | 0.25 (12) | 6.8 |
+  | free kick | 5 | 0.80 | 1.00 | 0.75 (4) | 5.2 |
+  | goal kick | 10 | 0.40 | 0.50 | 0.70 (10) | 0.0 |
+  | kick off (after goal) | 4 | 1.00 | 1.00 | — | 3.5 |
+  | throw-in | 26 | 0.73 | 0.88 | — | 3.6 |
+  | **all** | **57** | 0.75 | **0.86** | 0.50 (26) | 3.5 |
+
+  The public truth window holds only 2 set-piece tags (1 free kick, 1 goal kick), so nothing
+  can be checked against truth.
+- **Reading:** the pipeline already has D within ±3 s of 86% of set-piece starts, above the
+  0.7 line written before the run, so the set-piece D cue is **not built**. The only weak type
+  is goal kicks (5 of 10 without D near), about 5 stoppages in the match: too few to move spellF1
+  beyond noise. The side signal is not usable either: corners point to the tag's Team only 25%
+  of the time (Team looks like the defending side for corners, or the first alive frame after
+  the corner tag is often the defenders' clearance), and the truth window cannot settle which.
+- **Decision:** E007b not built. Set pieces add little over what the decoder already finds.
 
 #### E010d — the classifier's confident "alive" call added beside the slow cue, gaps only
 
