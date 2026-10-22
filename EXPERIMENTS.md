@@ -1061,3 +1061,51 @@ fires in play, so the direct test is the decoder with the cue swapped. Fixed bef
   team evidence over the first seconds after, with trust = the measured `own_after` on the truth
   window, shrunk towards 0.5 for the small count. Gate and criterion to be written then, before
   the real run.
+
+#### E010d — the classifier's confident "alive" call added beside the slow cue, gaps only
+
+Fixed before any run (autonomous session):
+
+- **Change:** on frames with the ball untracked, keep the slow cue and *add* one yes/no cue,
+  "confidently alive" = `p_dead ≤ 0.3` (the same 0.7 confidence line as E005c's `gap_conf`), with
+  its rates measured on ball-untracked frames against the pass-1 reference (value rule: used as
+  measured; measured first by a tiny scratch run, then wired in without changing them). Ball-seen
+  frames unchanged; `None` = off = E005c.
+- **Known compromise:** two movement cues on one frame are correlated (the E009 lesson), so the
+  measured rates overstate the combined evidence. Accepted for one run because the
+  stoppage-recall floor below catches the failure mode it would cause.
+- **Keep criterion:** exactly E010c's three (masked `to_dead` −0.03 with `change_recall` not
+  down > 0.02; D share 31–45%, possessions 250–400, mean 10–20 s; public truth-gap D floor 0.643).
+
+---
+
+### G2 — Synthetic generator v2 (development tool; no effect on the submission)
+
+- **Why:** v1 under-rated real gains (E003, E005c): players barely slowed at stoppages and the
+  ball was lost in 0.7 s bursts (real median gap in play 7.2 s, E005a).
+- **Change** (`tools/make_synthetic.py`, `GENERATOR_VERSION = 2`), each value from a measured real
+  aggregate, never from a synthetic score:
+  - free players are capped at `DEAD_PLAYER_SPEED = 1.5` m/s during a stoppage (players running
+    to a restart spot are not capped); E003 measured real median player speed < 1.25 m/s on 62%
+    of dead frames;
+  - `BALL_MISSING_RUN` 25 → 180 frames (mean run = the real 7.2 s median gap);
+  - in-play missing targets lowered (base 0.22 → 0.08, in air 0.35 → 0.20, crowd 0.2 → 0.1) so
+    ~17% of alive frames are untracked, the real share; at v1 rates with long runs it was ~52%.
+- `tools/synthetic_eval.py` now regenerates a cached bundle when its generator version differs
+  (v1 bundles were silently reused otherwise). One test relaxed: `dead_model.cross_half` may skip
+  a half whose pass-1 labels hold one class (it does on the small v2 bundle). 139 tests pass.
+- **v2 synthetic, 5 full seeds** (correctness only, never a selector):
+
+  | variant | spellF1 | macroF1 | possession ratio |
+  |---|---|---|---|
+  | vote | 0.298 ± 0.015 | 0.634 | 1.59 |
+  | hmm (E005c, submitted) | 0.409 ± 0.019 | 0.542 | 0.81 |
+  | hmm w = 0.1 / 0.4 | 0.343 / 0.383 | 0.525 / 0.544 | 0.56 / 1.23 |
+  | hmm no-gap (E003) | 0.379 ± 0.017 | 0.543 | 0.55 |
+  | hmm gap-dead (E010c) | 0.422 ± 0.023 | 0.569 | 0.84 |
+
+- **Reading:** v2 now shows E005c's gap team cue as a gain over E003 (+0.030 spellF1, possession
+  ratio 0.55 → 0.81), the direction the real run showed (275 → 308 possessions), where v1 hid it.
+  E010c's +0.013 here is inside the noise and its real run failed: still an upper bound, as the
+  rules say. Open question for the human: hmm macroF1 (0.54) is below the vote's (0.63) on v2;
+  likely the D class on v2's long dead gaps, not yet diagnosed.
