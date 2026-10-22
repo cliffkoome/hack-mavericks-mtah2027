@@ -924,3 +924,66 @@ command and what to paste back.
 - **Lesson** (for any future seen-frame cue): gate against the *decoded* labels on the same
   frames, not against the raw cue it competes with, and check the error-run length of carried
   cues against the ~5-frame correlation the evidence weight assumes.
+
+---
+
+### E010 — Dead/alive from player movement inside ball gaps (autonomous session, 2026-10-22)
+
+Run without the human, who authorised it for this session (branch `autonomous-mode`): Claude
+ran the aggregate-only tools itself, with stderr filtered, and fixed the values, gate and
+criterion below *before* the real run. Any new cue stays **off** in `config.py`; the human
+decides on switching it on.
+
+- **Step 0 (real data):** `make submission` on this branch's base (`fix/e009-off`) gives sha256
+  `a8ee1b28…`, 308 possessions, mean 13.3 s, home share 0.594: main's config = the submitted
+  E005c, confirmed.
+- **Idea:** the decoder calls the ball dead on 14% of hidden in-play frames (E005a harness,
+  `to_dead` 0.141). In a gap it has only "ball missing" (pro-D) and the slow-players cue (one
+  threshold on the median speed). Lang et al. separate in/out of play from players alone (92%)
+  with richer features at several time offsets. E010a: a self-supervised dead/alive classifier
+  (`possession/dead_model.py`) on movement features only (no ball), trained half-to-half on the
+  pass-1 labels of ball-seen frames, as `team_model` does for the side.
+- **Features (fixed before running):** per frame, over all tracked players: speed p25, p50, p75,
+  p90; share of players above 2 and above 4 m/s; spread of x and y. Each smoothed over ±0.5 s,
+  then taken at offsets 0, ±1, ±2, ±4, ±8 s. HistGradientBoosting, library defaults, seed 0,
+  every 5th frame, single-threaded (deterministic).
+- **E010a gate (`tools/dead_model_check.py`; against the *decoded* labels, the E009 lesson):**
+  1. On E005a's hidden frames (5 seeds pooled, reference alive): the classifier's dead rate must
+     be ≤ half the masked decoder's `to_dead` there (the loss we aim at).
+  2. On reference-labelled ball-seen frames, cross-half: balanced accuracy ≥ 0.80 (otherwise it
+     cannot tell dead from alive at all).
+  3. Public window, truth frames with the ball untracked: classifier balanced accuracy ≥ the
+     E005c decoded labels' balanced accuracy on the same frames − 0.02 (it must not be worse
+     where the truth is known; the window is small, so this is a floor, not a selector).
+- **E010b, only if the gate passes:** on untracked frames, replace the slow-players cue by the
+  classifier's call, in the same binary form with its measured rates (P(says dead | alive),
+  P(says dead | dead) on gate set 2), so no frame has two movement cues. Keep criterion,
+  masked harness vs reference: `to_dead` falls by ≥ 0.03 absolute with `change_recall` not
+  down by > 0.02; full match D share stays in 25–45% of graded frames and possessions in
+  250–400. Synthetic must not drop beyond its noise band (correctness only).
+- **E010a real data** (`tools/dead_model_check.py --gt …public…`, run by Claude this session;
+  aggregates only; balanced accuracy at p = 0.5):
+
+  | set | classifier: bal / dead\|alive / dead\|dead | slow cue alone | decoded E005c | n |
+  |---|---|---|---|---|
+  | (1) hidden frames, reference alive (5 seeds) | dead rate 0.022 | — | to_dead 0.141 | 93,535 |
+  | (2) ball seen, vs reference | 0.754 / 0.028 / 0.535 | 0.852 / 0.139 / 0.843 | — | 91,844 |
+  | (3) ball untracked, vs reference | 0.811 / 0.021 / 0.643 | 0.976 / 0.010 / 0.961 | — | 64,079 |
+  | (4) public truth, ball untracked | 0.784 / 0.000 / 0.569 | 0.789 / 0.020 / 0.599 | 0.871 / 0.000 / 0.743 | 885 |
+
+  Gate 1 PASS, gate 2 **FAIL** (0.754 < 0.80), gate 3 **FAIL** (0.784 < 0.871 − 0.02) →
+  **E010a gate FAIL**.
+- **Reading:** the classifier is a cautious copy of its teacher. It learns from pass-1 labels,
+  which the slow cue itself helped make, so it cannot beat the slow cue by much, and at p = 0.5
+  it misses half the stoppages. Gate 1 passing is mostly that caution: it rarely says dead at all.
+  The more useful finding is in row (1): on hidden frames the players' movement says "alive"
+  (2% dead), yet the masked decoder calls 14% of them dead. So the `to_dead` loss is not a
+  movement problem; it is the missing-ball cue piling up over a long gap (E002/E004 territory),
+  and a better movement cue placed beside it cannot fix that unless it is stronger than it.
+- **Decision:** stop, per the pre-set gate; E010b is not built. No change to `config.py` or the
+  pipeline: `possession/dead_model.py`, its tests and the check tool stay as a measured,
+  unused tool. The threshold was not retuned after seeing the result (that would be post hoc).
+- **Follow-up (not run):** measure which cue makes the masked decoder's D calls, i.e. the share of
+  masked `to_dead` frames where the slow cue fires. If that share is low, the next design is about
+  how much a long untracked run may weigh *when players are moving*, set by a value rule
+  before any run.
