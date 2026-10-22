@@ -287,3 +287,28 @@ def test_weight_scales_everything():
     full = evidence.log_emissions(tracking, SPEC, evidence_params())
     fifth = evidence.log_emissions(tracking, SPEC, evidence_params(weight=0.2))
     np.testing.assert_allclose(fifth, 0.2 * full)
+
+
+def test_gap_dead_cue_replaces_the_slow_cue_on_untracked_frames_only():
+    """E010c: where the ball is untracked and p_dead is known, the classifier's call stands in
+    for the slow cue; elsewhere the slow cue is untouched."""
+    spec = spec_module.GameSpec(n_frames=4, fps=FPS, pitch=(100.0, 50.0),
+                                graded_blocks=((0, 3),), kickoffs=(0,))
+    tracking = _walking_tracking([0.5] * 4)
+    tracking.ball = np.array([[50.5, 25], [np.nan, np.nan], [np.nan, np.nan], [np.nan, np.nan]])
+    p_dead = np.array([0.9, 0.9, 0.1, np.nan])        # seen; says dead; says alive; unknown
+    params = evidence_params(gap_dead_alive=0.02, gap_dead_dead=0.64, weight=1.0)
+    on = evidence.log_emissions(tracking, spec, params, p_dead=p_dead)
+    off = evidence.log_emissions(tracking, spec, params)
+    tilt = (on[:, D] - on[:, H]) - (off[:, D] - off[:, H])
+    slow = np.log(0.62 / 0.10)
+    assert tilt[0] == 0.0 and tilt[3] == 0.0
+    assert tilt[1] == pytest.approx(np.log(0.64 / 0.02) - slow)
+    assert tilt[2] == pytest.approx(np.log(0.36 / 0.98) - slow)
+
+
+def test_gap_dead_cue_off_ignores_p_dead():
+    tracking = FakeTracking([[[10, 10]]] * 4, [[np.nan, np.nan]] * 4, [H])
+    np.testing.assert_array_equal(
+        evidence.log_emissions(tracking, SPEC, evidence_params(), p_dead=np.full(4, 0.9)),
+        evidence.log_emissions(tracking, SPEC, evidence_params()))

@@ -78,6 +78,9 @@ command and what to paste back.
 | E007 | — | not yet | Restart detection and attribution from player configuration | planned |
 | E008 | — | not yet | Metrica sample-data harness (development aid) | planned |
 | E009 | 2026-10-21 | PR #28, #29, this PR | Last-control side on seen-ball frames (proximity, no velocity) | stop: no gain over E005c at any trust; code kept, off (`control_acc = None`) |
+| E010a | 2026-10-22 | autonomous-mode | Dead/alive-from-movement classifier (gate) | gate FAIL: bal 0.754 < 0.80 on seen frames; 0.784 vs decoded 0.871 on truth gaps |
+| E010c | 2026-10-22 | autonomous-mode | Classifier replaces the slow cue in gaps | drop: to_dead 0.141 -> 0.045 but change recall 0.284 -> 0.209, D share 35.4% -> 26.8% |
+| E007a | 2026-10-22 | autonomous-mode | Set-piece tags vs our dead-ball edges (measurement) | tool built; real run left to the human |
 
 ## Entry template
 
@@ -976,14 +979,85 @@ decides on switching it on.
 - **Reading:** the classifier is a cautious copy of its teacher. It learns from pass-1 labels,
   which the slow cue itself helped make, so it cannot beat the slow cue by much, and at p = 0.5
   it misses half the stoppages. Gate 1 passing is mostly that caution: it rarely says dead at all.
-  The more useful finding is in row (1): on hidden frames the players' movement says "alive"
-  (2% dead), yet the masked decoder calls 14% of them dead. So the `to_dead` loss is not a
-  movement problem; it is the missing-ball cue piling up over a long gap (E002/E004 territory),
-  and a better movement cue placed beside it cannot fix that unless it is stronger than it.
+  Row (1) is the one to read next: on hidden frames the classifier says alive (2% dead) where
+  the masked decoder says dead on 14%. Which cue makes those D calls is measured below.
 - **Decision:** stop, per the pre-set gate; E010b is not built. No change to `config.py` or the
   pipeline: `possession/dead_model.py`, its tests and the check tool stay as a measured,
   unused tool. The threshold was not retuned after seeing the result (that would be post hoc).
-- **Follow-up (not run):** measure which cue makes the masked decoder's D calls, i.e. the share of
-  masked `to_dead` frames where the slow cue fires. If that share is low, the next design is about
-  how much a long untracked run may weigh *when players are moving*, set by a value rule
-  before any run.
+- **Follow-up, measured** (`tools/gap_dead_why.py`, real data, 5 seeds pooled): of the hidden,
+  reference-alive frames the masked decoder calls D (13,213), the slow-players cue fires on
+  **0.883**; on those it keeps alive (80,322), on 0.016. Hidden-run lengths are alike in both
+  groups (> 10 s: 0.751 vs 0.714). So the `to_dead` loss is **slow play with the ball unseen**:
+  players walk (slow cue false alarm, 0.10 of alive frames), the ball is missing, and nothing else
+  argues alive. With the ball seen, ball and nearest-player cues kept these frames alive. The
+  movement classifier, which looks at more than the median, calls 98% of hidden frames alive.
+  (This corrects a first reading written here before the measurement, which put the loss on the
+  missing-ball cue.)
+
+#### E010c — the movement classifier in place of the slow cue, on untracked frames only
+
+A new experiment, not a rescue of E010a's gate: E010a asked whether the classifier is a better
+dead/alive reader than the decoder; the follow-up shows the specific loss sits where the slow cue
+fires in play, so the direct test is the decoder with the cue swapped. Fixed before any run:
+
+- **Change:** on frames with the ball untracked and a classifier value, drop the slow-players
+  term and add the classifier's call (p_dead ≥ 0.5) as a yes/no cue, with its measured rates from
+  E010a row (3), used as measured: `gap_dead_alive = 0.02` (P(says dead | alive), 0.021),
+  `gap_dead_dead = 0.64` (P(says dead | dead), 0.643). Ball-seen frames are unchanged. Trained in
+  pass 1 like E005c's team cue (half-to-half on pass-1 labels). `None` = off = E005c exactly.
+- **Risk it trades:** the classifier misses ~40% of real stoppages in gaps, which the masked
+  harness cannot see (it hides only alive frames). Hence the D-share and truth floors below.
+- **Keep criterion** (all; masked harness 5 seeds, vs the unmasked reference *of the same config*):
+  1. `to_dead` falls by ≥ 0.03 absolute (E005c 0.141), `change_recall` not down by > 0.02.
+  2. Full match: D share of graded frames in 31–45% (E005c 35.4%; E002 collapsed to 8%),
+     possessions 250–400, mean 10–20 s.
+  3. Public window, truth frames with the ball untracked: decoded dead|dead ≥ 0.743 − 0.10
+     (a floor; n = 885 frames from a handful of stoppages).
+- Whatever the result, `config.py` keeps it **off**; the human decides on switching.
+- **Real data** (Claude-run this session, same config except the switch; masked harness 5 seeds;
+  aggregates only):
+
+  | | E005c (off) | E010c (on) | criterion |
+  |---|---|---|---|
+  | masked `to_dead` | 0.141 ± 0.025 | **0.045 ± 0.010** | ≤ 0.111 ✓ |
+  | masked `change_recall` | 0.284 ± 0.044 | **0.209 ± 0.052** | ≥ 0.264 ✗ |
+  | masked wrong_side / agreement | 0.161 / 0.700 | 0.173 / 0.772 | — |
+  | D share of graded frames | 35.4% | **26.8%** | 31–45% ✗ |
+  | possessions / mean | 308 / 13.3 s | 315 / 14.8 s | 250–400, 10–20 s ✓ |
+  | public truth D frames, ball untracked: called D | 0.743 | 0.713 (n 494) | ≥ 0.643 ✓ |
+
+  The off column reproduces the submitted E005c (308, 35.4%), so the switch is clean.
+- **Decision:** **drop** (two of three criteria fail). The swap does what it was meant to do on
+  hidden in-play frames (`to_dead` down by two thirds), but it pays for it twice: the D share
+  falls 8.6 points, which is the classifier's ~40% missed stoppages showing up over the whole
+  match (E002's failure mode, milder), and side changes inside gaps are found less often (with
+  fewer D calls, a turnover in a gap now has to beat a full switch cost instead of going via D).
+  `gap_dead_alive = None` stays in `config.py`; code and tests are kept, off.
+- **Lesson:** the to_dead loss and the stoppage recall pull against each other through one cue.
+  A cue that fixes it must keep the slow cue's stoppage recall: e.g. *add* the classifier's
+  "alive" call only when it is confident (very low p_dead) instead of replacing the slow cue.
+  That is a new experiment with its own pre-set values, not a retune of this one.
+
+---
+
+### E007a — Smart Tagging set pieces vs our dead-ball edges (measurement only; autonomous session)
+
+- **Idea:** a set piece is a restart: the ball was dead just before the tag starts, and the
+  restarting side (E002: Team = restarting side for free and goal kicks) has it just after. If our
+  labels show no D near many set-piece starts, those stoppages are missed, and each one merges two
+  possessions or hides a side change. That would make set-piece tags the next dead-ball cue.
+- **Tool:** `tools/inspect_restarts.py [--gt …]`. Per set-piece Type: share of tags with D in the
+  3 s before the start, D within ±3 s, the first alive side after the start being the tag's Team,
+  and the median seconds from tag start to the first alive frame. Shares and counts over tags only.
+  Runs on synthetic data (v1 bundle full-seed0: our labels have D near 0.49 of set-piece starts,
+  truth 1.00; own side after 0.89).
+- **Not run on real data:** this session's permission classifier refused the real-data run of this
+  tool (it reads the Smart Tagging file), and Claude did not work around it. **Command for the
+  human:** `.venv/bin/python tools/inspect_restarts.py --gt evaluation/gt/BAR-ATH_possession_gt_public.csv`;
+  paste back the whole output (shares and counts per Type only).
+- **E007b design to fix once the numbers are in** (not yet decided, so not pre-registered): if our
+  `dead_near` is ≤ 0.7 on the full match, add a set-piece cue: D evidence over the WINDOW_S before
+  each tagged start, and the tag's side (free, goal, corner kicks; N/A throw-ins carry no side) as
+  team evidence over the first seconds after, with trust = the measured `own_after` on the truth
+  window, shrunk towards 0.5 for the small count. Gate and criterion to be written then, before
+  the real run.

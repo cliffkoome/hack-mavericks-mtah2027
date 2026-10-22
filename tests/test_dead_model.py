@@ -48,7 +48,7 @@ def test_cross_half_never_trains_on_the_half_it_predicts(synthetic):
     tracking = atd.load(spec, data_dir)
     reference = pipeline.label(tracking, spec, PARAMS)
     p_dead, folds = dm.cross_half(tracking, spec, reference)
-    assert len(folds) == 2
+    assert folds  # a half whose training frames hold one class only is skipped
     for predicted, train in folds:
         assert len(train) and not predicted[train].any()
     known = ~np.isnan(p_dead)

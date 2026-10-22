@@ -1,6 +1,7 @@
 """The whole chain from data bundle to labels. run_pipeline.py is a thin CLI over build()."""
 
-from possession import D, atd, decoder, evidence, features, rules, smoothing, team_model
+from possession import D, atd, dead_model, decoder, evidence, features, rules, smoothing
+from possession import team_model
 from possession import touches
 from possession import spec as spec_module
 
@@ -33,16 +34,20 @@ def _hmm(tracking, spec, params):
     ev = params["evidence"]
     log_emit = evidence.log_emissions(tracking, spec, ev)
     first = decoder.decode_match(log_emit, spec, params["decoder"])
-    if ev["gap_acc_strong"] is None and ev["control_acc"] is None:
+    gap_dead = ev["gap_dead_alive"] is not None
+    if ev["gap_acc_strong"] is None and ev["control_acc"] is None and not gap_dead:
         return first
     labels = rules.finalize(first, spec)
-    p_home = control = None
+    p_home = control = p_dead = None
     if ev["gap_acc_strong"] is not None:
         p_home, _ = team_model.cross_half(tracking, spec, labels, ev["near_m"])
+    if gap_dead:
+        p_dead, _ = dead_model.cross_half(tracking, spec, labels)
     if ev["control_acc"] is not None:
         holder, _ = touches.held(tracking, ev["near_m"])
         frames, sides = touches.controls(holder)
         control = touches.last_touch(spec.n_frames, frames, sides,
                                      features.ball_visible(tracking), labels == D, spec.fps)
-    log_emit = evidence.log_emissions(tracking, spec, ev, p_home=p_home, control=control)
+    log_emit = evidence.log_emissions(tracking, spec, ev, p_home=p_home, control=control,
+                                      p_dead=p_dead)
     return decoder.decode_match(log_emit, spec, params["decoder"])

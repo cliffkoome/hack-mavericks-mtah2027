@@ -57,6 +57,10 @@ PARAMS = {
         # but at no trust setting did it beat E005c on synthetic data, so it stays off
         # (EXPERIMENTS.md, E009). None = off = E005c exactly.
         "control_acc": None,        # P(last-control side is right); 0.865 measured; None = off
+        # E010c (off): on untracked frames, the dead/alive-from-movement classifier
+        # (dead_model.py) replaces the slow-players cue. Rates measured in E010a row (3).
+        "gap_dead_alive": None,     # P(classifier says dead | alive); 0.021 measured; None = off
+        "gap_dead_dead": 0.64,      # P(classifier says dead | dead); 0.643 measured
         "weight": 0.2,              # evidence tempering: ~1 independent reading per 5 frames
     },
 }
