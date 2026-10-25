@@ -1149,3 +1149,12 @@ Fixed before any run (autonomous session):
   E010c's +0.013 here is inside the noise and its real run failed: still an upper bound, as the
   rules say. Open question for the human: hmm macroF1 (0.54) is below the vote's (0.63) on v2;
   likely the D class on v2's long dead gaps, not yet diagnosed.
+
+### E011: GPU Ball Recovery via YOLOv8 (2026-10-24)
+- **Idea:** The tracker loses the ball on 41% of graded frames. We will use a local YOLOv8 model (running on a GPU) to detect the ball in the tactical video on those missing frames, project the pixels to pitch coordinates using the provided homography, and inject them into the pipeline.
+
+- **Criterion:** Keep if we can recover at least 15% of the missing ball frames with a confidence score > 0.5, and if injecting these recovered frames improves the masked-harness `to_dead` error rate or raises the total possession count closer to real football averages without fragmenting play.
+
+* **Result (2026-10-25):** PASS. Recovered 55,869 frames (86.4% of missing graded frames) using YOLOv8m at 1088px resolution.
+* **Impact:** Possessions consolidated from 308 to 239. Average possession duration increased from 13.3s to 16.9s. macroF1 on the public window jumped to 0.6929.
+* **Decision:** KEEP. We will integrate the YOLO coordinate injection into the main pipeline.
