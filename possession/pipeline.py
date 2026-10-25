@@ -1,5 +1,9 @@
 """The whole chain from data bundle to labels. run_pipeline.py is a thin CLI over build()."""
 
+import os
+import pandas as pd
+import subprocess
+
 from possession import D, atd, dead_model, decoder, evidence, features, rules, smoothing
 from possession import team_model
 from possession import touches
@@ -12,6 +16,22 @@ def build(params, data_dir=None):
     """(codes, spec): final per-frame label codes for the match in data_dir (default: data/)."""
     spec = spec_module.load(data_dir)
     tracking = atd.load(spec, data_dir)
+    
+    # E011 YOLO Injection
+    recovery_file = "recovered_pitch_full.csv"
+    if not os.path.exists(recovery_file):
+        print(f"[{recovery_file} not found] Running YOLOv8 extraction (this takes ~25 mins on RTX 4070)...")
+        env = os.environ.copy()
+        env["PYTHONPATH"] = "."
+        subprocess.run(["python", "tools/recover_all_fast.py"], env=env, check=True)
+        
+    if os.path.exists(recovery_file):
+        rec = pd.read_csv(recovery_file)
+        frames = rec["frame"].values.astype(int)
+        tracking.ball[frames, 0] = rec["pitch_x"].values
+        tracking.ball[frames, 1] = rec["pitch_y"].values
+        print(f"[Pipeline] Injected {len(frames)} YOLO-recovered ball coordinates.")
+
     return label(tracking, spec, params), spec
 
 
