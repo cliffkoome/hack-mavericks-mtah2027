@@ -22,7 +22,7 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
 sys.path.insert(0, HERE)
 from config import PARAMS  # noqa: E402
-from possession import atd, pipeline, spec as spec_module  # noqa: E402
+from possession import atd, pipeline, tagging, spec as spec_module  # noqa: E402
 import make_synthetic  # noqa: E402
 import possession_metrics as pm  # noqa: E402
 
@@ -43,6 +43,10 @@ def variants():
     gap_dead = dict(copy.deepcopy(PARAMS), model="hmm")
     gap_dead["evidence"]["gap_dead_alive"] = 0.02
     out["hmm gap-dead (E010c)"] = gap_dead
+    # E012 at the gate's pass line for both groups: a correctness check, not a value choice.
+    tag_cue = dict(copy.deepcopy(PARAMS), model="hmm")
+    tag_cue["evidence"].update(tag_acc_attack=0.8, tag_acc_defend=0.8)
+    out["hmm tag-cue (E012)"] = tag_cue
     return out
 
 
@@ -66,10 +70,11 @@ def evaluate(size, seeds):
         data_dir = bundle(size, seed)
         spec = spec_module.load(data_dir)
         tracking = atd.load(spec, data_dir)
+        tags = tagging.load(data_dir)
         gt = pm.label_codes(pm.read_label_csv(
             os.path.join(data_dir, "synthetic_possession_gt.csv")))
         for name, params in variants().items():
-            result = pm.evaluate(gt, pipeline.label(tracking, spec, params))
+            result = pm.evaluate(gt, pipeline.label(tracking, spec, params, tags))
             results[name].append((result["spell_f1_mean"], result["macro_f1"],
                                   result["n_pred_spells"] / result["n_gt_spells"]))
     return results

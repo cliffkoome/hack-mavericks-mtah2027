@@ -68,3 +68,33 @@ def test_run_pipeline_cli(synthetic, tmp_path):
     assert result.returncode == 0, result.stderr
     assert '"valid": true' in result.stdout
     assert os.path.isfile(target)
+
+
+def test_tag_cue_off_is_e005c_exactly_and_on_needs_tags(synthetic):
+    import copy
+
+    from possession import tagging
+
+    out, _ = synthetic
+    spec = spec_module.load(out)
+    tracking = atd.load(spec, out)
+    tags = tagging.load(out)
+    assert pipeline.tags_for(PARAMS, out) is None              # off reads no file
+    np.testing.assert_array_equal(pipeline.label(tracking, spec, PARAMS),
+                                  pipeline.label(tracking, spec, PARAMS, tags))
+    on = copy.deepcopy(PARAMS)
+    on["evidence"].update(tag_acc_attack=0.8, tag_acc_defend=0.8)
+    with pytest.raises(ValueError, match="tags_for"):
+        pipeline.label(tracking, spec, on)
+    assert not np.array_equal(pipeline.label(tracking, spec, PARAMS),
+                              pipeline.label(tracking, spec, on, tags))
+
+
+def test_tag_gate_runs_and_prints_only_tables(synthetic):
+    out, _ = synthetic
+    result = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "tag_gate.py"),
+                             "--data-dir", out], capture_output=True, text=True, cwd=ROOT)
+    assert result.returncode == 0, result.stderr
+    for line in ("E012 gate", "attacking", "defending", "pass lines"):
+        assert line in result.stdout
+    assert len(result.stdout.splitlines()) < 40  # aggregate tables, never per-frame output

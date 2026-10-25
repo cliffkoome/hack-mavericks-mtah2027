@@ -65,6 +65,14 @@ PARAMS = {
         # p_dead <= 0.3 as a yes/no cue. Rates measured against the pass-1 reference.
         "gap_alive_alive": None,    # P(confidently alive | alive); 0.968 measured; None = off
         "gap_alive_dead": 0.30,     # P(confidently alive | dead); 0.300 measured
+        # E012 (off): on untracked frames, beside the gap team cue, the side a Smart Tagging phase
+        # says has the ball (tagging.phase_cue). Values fixed by reasoning before any run
+        # (EXPERIMENTS.md, E012); the two accuracies come from its gate, used as measured.
+        "tag_acc_attack": None,     # P(attacking tag's Team has the ball); None = group off
+        "tag_acc_defend": None,     # P(defending tag's other side has it); both None = E005c
+        "tag_trim_s": 1.0,          # seconds off each end of a tag: its times are automatic
+        "tag_cap": 25,              # frames of evidence per run of one side (as missing_run_cap)
+        "tag_unsure_only": False,   # True = only where the gap classifier is not confident
         "weight": 0.2,              # evidence tempering: ~1 independent reading per 5 frames
     },
 }

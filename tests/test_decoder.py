@@ -312,3 +312,43 @@ def test_gap_dead_cue_off_ignores_p_dead():
     np.testing.assert_array_equal(
         evidence.log_emissions(tracking, SPEC, evidence_params(), p_dead=np.full(4, 0.9)),
         evidence.log_emissions(tracking, SPEC, evidence_params()))
+
+
+def _tag(sides, accuracy=0.8):
+    side = np.array(sides, dtype=np.int8)
+    run = np.where(side >= 0, np.cumsum(np.diff(np.concatenate(([-1], side))) != 0) - 1, -1)
+    return side, np.where(side >= 0, accuracy, np.nan), run
+
+
+TAG_ON = {"tag_acc_attack": 0.8, "tag_acc_defend": 0.8}
+
+
+def test_tag_cue_only_on_untracked_frames():
+    ball = [[11, 10], [np.nan, np.nan], [np.nan, np.nan], [np.nan, np.nan]]
+    tracking = FakeTracking([[[10, 10]]] * 4, ball, [A])
+    shift = (evidence.log_emissions(tracking, SPEC, evidence_params(**TAG_ON),
+                                    tag=_tag([H, H, H, -1]))
+             - evidence.log_emissions(tracking, SPEC, evidence_params(**TAG_ON)))
+    np.testing.assert_array_equal(shift[[0, 3]], 0.0)  # ball seen; no tag
+    assert shift[1, H] - shift[1, A] == pytest.approx(np.log(0.8 / 0.2))
+    assert shift[1, D] == pytest.approx(np.log(0.5))
+
+
+def test_tag_cue_is_capped_per_run():
+    tracking = FakeTracking([[[10, 10]]] * 4, [[np.nan, np.nan]] * 4, [H])
+    params = evidence_params(tag_cap=2, **TAG_ON)
+    shift = (evidence.log_emissions(tracking, SPEC, params, tag=_tag([A, A, A, A]))
+             - evidence.log_emissions(tracking, SPEC, params))
+    margin = shift[:, A] - shift[:, H]
+    np.testing.assert_allclose(margin, 0.5 * np.log(0.8 / 0.2))  # 4 frames share 2 frames' worth
+    assert margin.sum() == pytest.approx(2 * np.log(0.8 / 0.2))
+
+
+def test_tag_cue_unsure_only_skips_confident_classifier_frames():
+    tracking = FakeTracking([[[10, 10]]] * 4, [[np.nan, np.nan]] * 4, [H])
+    params = evidence_params(tag_unsure_only=True, tag_cap=100, **TAG_ON)
+    p_home = np.array([0.9, 0.6, np.nan, 0.1])
+    shift = (evidence.log_emissions(tracking, SPEC, params, p_home=p_home, tag=_tag([A] * 4))
+             - evidence.log_emissions(tracking, SPEC, params, p_home=p_home))
+    np.testing.assert_array_equal(shift[[0, 3]], 0.0)  # confident either way
+    assert (shift[[1, 2], A] > shift[[1, 2], H]).all()

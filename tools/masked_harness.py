@@ -34,10 +34,13 @@ COUNTS = ("n_possessions", "n_changes", "n_touched", "n_hidden")
 COLUMNS = RATES + COUNTS
 
 
-def run(tracking, spec, params, gt, seeds):
-    """(context, table 1 rows, table 2 rows or None); rows are dicts of COLUMNS per run."""
+def run(tracking, spec, params, gt, seeds, tags=None):
+    """(context, table 1 rows, table 2 rows or None); rows are dicts of COLUMNS per run.
+
+    tags: Smart Tagging events, needed when the phase tag cue (E012) is on (pipeline.tags_for).
+    """
     tol = spec.fps
-    reference = pipeline.label(tracking, spec, params)
+    reference = pipeline.label(tracking, spec, params, tags)
     visible = features.ball_visible(tracking)
     decoded = masking.decoded_mask(spec)
     lengths = masking.gap_lengths(visible, reference, decoded)
@@ -45,7 +48,7 @@ def run(tracking, spec, params, gt, seeds):
     for seed in seeds:
         masked, hidden = masking.mask_ball(tracking, reference, spec, seed,
                                            params["evidence"]["mid_m"])
-        codes = pipeline.label(masked, spec, params)
+        codes = pipeline.label(masked, spec, params, tags)
         vs_reference.append(masking.compare(reference, codes, hidden, spec, tol))
         if gt is not None:
             vs_truth.append((masking.compare(gt, reference, hidden, spec, tol),
@@ -89,7 +92,8 @@ def main():
     spec = spec_module.load(args.data_dir)
     tracking = atd.load(spec, args.data_dir)
     gt = pm.label_codes(pm.read_label_csv(args.gt)) if args.gt else None
-    context, vs_reference, vs_truth = run(tracking, spec, PARAMS, gt, SEEDS)
+    context, vs_reference, vs_truth = run(tracking, spec, PARAMS, gt, SEEDS,
+                                          pipeline.tags_for(PARAMS, args.data_dir))
 
     print("model: {}, seeds: {}".format(PARAMS["model"], list(SEEDS)))
     for key, value in context.items():
