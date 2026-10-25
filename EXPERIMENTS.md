@@ -82,7 +82,7 @@ command and what to paste back.
 | E010c | 2026-10-22 | autonomous-mode | Classifier replaces the slow cue in gaps | drop: to_dead 0.141 -> 0.045 but change recall 0.284 -> 0.209, D share 35.4% -> 26.8% |
 | E010d | 2026-10-22 | autonomous-mode | Classifier's confident-alive call beside the slow cue | drop (narrow): to_dead 0.141 -> 0.100, D share 34.4%, but change recall 0.284 -> 0.249 (limit -0.02) |
 | E007a | 2026-10-22 | autonomous-mode | Set-piece tags vs our dead-ball edges (measurement) | stop: D already near 86% of set-piece starts (line 0.7); E007b not built |
-| E012 | 2026-10-25 | feat/e012-tag-cue | Smart Tagging phase tags as a team cue where the ball is untracked | synthetic pass (recall +0.025); real gate not yet run |
+| E012 | 2026-10-25 | feat/e012-tag-cue | Smart Tagging phase tags as a team cue where the ball is untracked | stop: gate FAIL, right on only 0.29 / 0.32 of frames where E005c is wrong (line 0.50); code kept, off |
 
 ## Entry template
 
@@ -1218,3 +1218,22 @@ Fixed before any run (autonomous session):
   up). Warning, read before the real run: on synthetic data, where the tags agree with the
   reference ~0.92 by construction, the recall gain is +0.025, already below the real
   criterion's +0.03, and synthetic is an upper bound. The criterion stays as fixed.
+- **Real data, gate (human-run 2026-10-25; aggregates only).** Check first: `make submission` on
+  this branch (cue off) gives sha256 `a8ee1b28…`, E005c exactly. Context: 19,455 real untracked
+  in-play frames; 141 attacking and 140 defending tags after the trim, covering 0.132 and 0.271
+  of the real gaps.
+
+  | hidden in-play frames, seeds 0–4 | attacking | defending | pass line |
+  |---|---|---|---|
+  | (1) tags covered / frames | 67 ± 5 / 10,446 | 71 ± 4 / 10,650 | ≥ 50 tags ✓ |
+  | (2) agree with reference | 0.803 ± 0.019 | 0.779 ± 0.027 | ≥ 0.80: ✓ / ✗ |
+  | (3) right where masked E005c is wrong | **0.291 ± 0.075** (n 1,477) | **0.324 ± 0.040** (n 1,835) | ≥ 0.50 ✗ ✗ |
+  | (4) agree, classifier confident / unsure | 0.824 / 0.677 | 0.802 / 0.640 | fallback if ≤ 0.6: no |
+
+- **Decision: stop (gate FAIL, both groups).** The tags are ~80% right overall but right on only
+  ~30% of the frames where our model has the wrong side: their errors coincide with ours, as
+  DATA.md warns (Metrica infers them from the same video and tracking). They are also strongest
+  where the classifier is already confident (0.82) and weakest where it is not (0.64–0.68), so
+  the unsure-only fallback would not help either. Code kept, cue off (`tag_acc_* = None`); no
+  criterion run. **Lesson:** check (3), right-where-we-are-wrong, is the cheap test that a second
+  cue carries new information; plain agreement (2) passed for attacking and would have misled.

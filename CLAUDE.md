@@ -178,17 +178,16 @@ python starter/baseline.py                            # rebuild baselines (needs
 
 ## Current status (update at the end of every session)
 
-Last updated: 2026-10-22. Deadline 17 November 2026: 26 days left.
-**Model frozen at E005c (2026-10-22). Technical document written: `hack_mavericks.md`.** The PR
-from `autonomous-mode` brings main back to the submitted config and adds the document.
+Last updated: 2026-10-25. Deadline 17 November 2026: 23 days left.
+**Submission = E005c. Technical document: `hack_mavericks.md`.** The freeze was lifted on
+2026-10-25 for E011/E012 only, with a hard stop on 31 Oct; final freeze ~7 Nov. `autonomous-mode`
+is merged (PR #33).
 
 - **Submitted CSV:** E005c. `submissions/hack_mavericks.csv`, sha256 `a8ee1b28…`: 308 possessions,
   mean 13.3 s, D 35.4% of graded frames, home share 0.594. Public window (correctness only):
   16 possessions (truth 17), spellF1 0.4242, macroF1 0.6980. Floor to beat: 0.2433.
-- **main's config = the submitted model (E005c).** E009b's control cue is switched off
-  (`control_acc = None`). Confirmed on real data 2026-10-22: `make submission` on
-  `fix/e009-off` and on `autonomous-mode` both give `a8ee1b28…`. `fix/e009-off` is not yet
-  merged into main.
+- **main's config = the submitted model (E005c)**, every later cue off. Confirmed on real data
+  2026-10-25: `make submission` on `feat/e012-tag-cue` (cue off) gives `a8ee1b28…`.
 - **The model (E005c):** 3-state Viterbi (`possession/decoder.py`). Evidence: nearest-player team
   cue and ball tracked/outside/still cues (E001 values), player-movement cue (E003), and a
   gap-only team cue from the team-from-movement classifier (`possession/team_model.py`,
@@ -204,11 +203,18 @@ from `autonomous-mode` brings main back to the submitted config and adds the doc
   but D share 26.8%, change recall 0.209); E010d drop, narrowly (confident-alive beside slow
   cue: to_dead 0.100, D share 34.4%, change recall 0.249 vs limit 0.264); E007a stop (D already
   near 86% of set-piece starts); G2 synthetic generator v2. All new cues off (`gap_dead_alive`,
-  `gap_alive_alive` = None).
+  `gap_alive_alive` = None). 2026-10-25: E011 (Diing's YOLO ball recovery, PR #34) closed
+  unmerged: it injected 0-1 homography coordinates into the metre ball array, so every recovered
+  ball sat in one corner. Synthetic: a perfect detector in metres would give +0.08 spellF1, but
+  with 25% false detections the gain is ~0.01. Its next step is a detector-accuracy gate on
+  seen-ball frames (Diing). E012 (Smart Tagging phase tags as a gap team cue, PR #35) stopped at
+  its gate: agree 0.80 / 0.78, but right on only 0.29 / 0.32 of the frames where E005c is wrong
+  (line 0.50). Code kept, off (`tag_acc_* = None`).
 - **Tools the human runs** (print aggregates only, safe to paste back): `tools/inspect_cues.py`,
   `tools/masked_harness.py --gt …`, `tools/team_model_check.py --gt …`,
   `tools/inspect_touches.py --gt … [--cue touch]`, `tools/dead_model_check.py --gt …`,
-  `tools/gap_dead_why.py`, `tools/inspect_restarts.py --gt …`, `make verify-baseline`,
+  `tools/gap_dead_why.py`, `tools/inspect_restarts.py --gt …`, `tools/tag_gate.py`,
+  `make verify-baseline`,
   `make submission`, `make reproduce`.
 - **Known weaknesses:**
   - In gaps the model calls the ball dead on 14% of hidden in-play frames (harness `to_dead`
@@ -219,14 +225,14 @@ from `autonomous-mode` brings main back to the submitted config and adds the doc
 - **Lessons that bind new cues:** fix values, gates and criteria before the real run; gate a cue
   against the *decoded* labels on the same frames, not the raw cue it competes with; check that a
   carried cue's errors are not much longer than the ~5-frame correlation the weight assumes;
+  gate a second cue on "right where the model is wrong" (E012), not only on raw agreement;
   one change per experiment; draft PRs are not for merging.
 
 ### Next session: start here
 
 **Human, to submit:**
-1. Merge the `autonomous-mode` PR. Then on main: `make reproduce` (expect `byte-identical: OK`)
-   and `make submission` (expect sha256 `a8ee1b28…`). A fresh venv from `requirements.txt` has
-   already rebuilt that sha (2026-10-22).
+1. Merge PR #35 (E012, cue off: labels unchanged). Then on main: `make reproduce` (expect
+   `byte-identical: OK`) and `make submission` (expect sha256 `a8ee1b28…`).
 2. Make the repo public; `git status` must show no data files.
 3. Google Form: upload `submissions/hack_mavericks.csv` (as `hack_mavericks.csv`) and
    `hack_mavericks.md`, plus the public repo URL. Validate the exact file you upload.
@@ -237,7 +243,11 @@ from `autonomous-mode` brings main back to the submitted config and adds the doc
 check that `config.py` has `control_acc = None` and `gap_acc_strong = 0.86`; then propose the
 chosen step's design (values, gate, criterion) for the human's OK before any code.
 
-**Next step candidates** (only if the freeze is lifted; recommended order):
+**Next step candidates** (hard stop 31 Oct for anything that changes labels):
+0. **E011 gate (Diing):** YOLO on frames where the tracking *has* the ball: detection share,
+   median error in metres, share within 2 m, at confidences 0.05 / 0.25 / 0.5. Pass bar to fix
+   before the run. Only then: the units fix, a cache in `cache/`, and a cue that is off by
+   default. Broadcast-ATD sync feasibility is parked behind it.
 1. **E010d revisit:** closest miss; only with more masking seeds and a criterion re-stated
    before the run, never by moving this one's limit. (E007b restarts: not built, E007a.)
 2. If any model change lands, update `hack_mavericks.md` (sha, results, tables) with it.

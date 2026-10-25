@@ -143,7 +143,7 @@ drops back, closes up and presses.
 |---|---|
 | **Tracking (ATD), tactical feed** | **Used**: everything. Our reader rebuilds the four published baselines frame-for-frame (`make verify-baseline` → IDENTICAL ×4), which verifies alignment (`video_frame = frame_id − 1`), slot-team mapping and arithmetic. |
 | Public 5-minute ground truth | Correctness checks and measuring cue rates (e.g. the players-walking rates). Never used to choose between versions. |
-| Smart Tagging | **Measured, dropped.** Team semantics differ by code: for attacking phases Team is the side with the ball, for defending phases the side without it. Phases are not possessions. Our labels already have a dead ball within 3 s of 86% of set-piece starts, and after a corner tag the first side in our labels matches the tagged team only 25% of the time (the public window holds just 2 set-piece tags, too few to say which is right), so set pieces add little (EXPERIMENTS.md, E002, E007a). |
+| Smart Tagging | **Measured, dropped.** Team semantics differ by code: for attacking phases Team is the side with the ball, for defending phases the side without it. Phases are not possessions. Our labels already have a dead ball within 3 s of 86% of set-piece starts, and after a corner tag the first side in our labels matches the tagged team only 25% of the time (the public window holds just 2 set-piece tags, too few to say which is right), so set pieces add little (EXPERIMENTS.md, E002, E007a). Phase tags as a team cue in ball gaps were also tested and stopped at their gate: where our model is wrong, the tags are mostly wrong too (E012). |
 | Homography | Not needed: the tracking is already in pitch coordinates. |
 | Tactical and broadcast video | Not used. Ball detection from video was the last step of our plan, kept for only if the tracking-only model plateaued. We chose explainable CPU code that the organisers can rerun instead. |
 | Broadcast-feed tracking | Not used; the submission is indexed by tactical-video frames. |
@@ -161,6 +161,7 @@ the criterion decided. The log has every number.
 | E009 | the last side in control instead of the nearest player | **stopped**: more accurate as a raw cue (0.865 vs 0.780) but no gain after decoding, since its errors run long |
 | E010 | dead/alive from player movement inside ball gaps | **dropped** (three versions): it cut wrong dead calls in gaps (14% → 4.5–10%) but cost side-change recall in gaps or the overall D share |
 | E007 | set-piece tags as restart evidence | **not built**: our labels already have D near 86% of set-piece starts |
+| E012 | phase tags (attacking / defending) as a team cue where the ball is untracked | **stopped at its gate**: the tags agree with our labels ~80% of the time, but are right on only ~30% of the frames where our model has the wrong side, so they repeat our errors rather than fix them |
 
 Kept, in order: E001 (the decoder: possessions 584 → 316), E003 (players walking: D share
 45% → 37%), E005c (gap team cue: possessions 275 → 308). When we hid the ball on seen frames to
