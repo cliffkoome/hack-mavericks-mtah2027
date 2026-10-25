@@ -22,6 +22,9 @@ Each frame contributes independent cues, each a probability with a plain meaning
             (p_dead, dead_model.py) replaces the slow cue, so no frame has two movement cues
             (E010c, off by default). Or (E010d, off): its confident "alive" call
             (p_dead <= 0.3) added beside the slow cue.
+  phase tag where the ball is untracked: the side a Smart Tagging phase says has the ball
+            (tagging.phase_cue), beside the gap team cue, each run of one side capped at
+            tag_cap frames of evidence (E012, off by default).
 
 The values in config.py come from documented facts about the tracking (DATA.md) and football
 priors, never from fitting the public window. Consecutive frames are far from independent, so
@@ -34,12 +37,14 @@ import numpy as np
 from possession import H, A, D, features
 
 
-def log_emissions(tracking, spec, params, p_home=None, control=None, p_dead=None):
+def log_emissions(tracking, spec, params, p_home=None, control=None, p_dead=None,
+                  tag=None):
     """(n, 3) array: log P(evidence at frame t | state), columns in H, A, D order.
 
     p_home: per-frame P(H has the ball) from team_model, NaN where unknown; None = no gap cue.
     control: per-frame last-control side (H/A, negative where unknown); None = no control cue.
     p_dead: per-frame P(dead) from dead_model, NaN where unknown; None = no gap dead cue.
+    tag: (side, accuracy, run) from tagging.phase_cue; None = no phase tag cue (E012).
     """
     team, distance = features.nearest_player(tracking)
     visible = features.ball_visible(tracking)
@@ -91,6 +96,8 @@ def log_emissions(tracking, spec, params, p_home=None, control=None, p_dead=None
                               params["slow_dead"], where=~np.isnan(walking) & ~gap_dead)
     if p_home is not None and params["gap_acc_strong"] is not None:
         _add_gap_team(out, p_home, missing, params)
+    if tag is not None:
+        _add_tag_team(out, tag, missing, p_home, params)
     out[:, H] += alive_dead[:, 0]
     out[:, A] += alive_dead[:, 0]
     out[:, D] += alive_dead[:, 1]
@@ -106,6 +113,26 @@ def _add_gap_team(out, p_home, missing, params):
     for state in (H, A):
         out[cue, state] += np.where(favoured == state, np.log(accuracy), np.log(1 - accuracy))
     out[cue, D] += np.log(0.5)
+
+
+def _add_tag_team(out, tag, missing, p_home, params):
+    """Phase tag side on untracked frames (E012), each run capped at tag_cap frames of evidence.
+
+    With tag_unsure_only, only where the gap classifier is not confident (or has no call).
+    """
+    side, accuracy, run = tag
+    cue = missing & (side >= 0)
+    if params["tag_unsure_only"] and p_home is not None:
+        cue &= ~((p_home >= params["gap_conf"]) | (p_home <= 1 - params["gap_conf"]))
+    if not cue.any():
+        return
+    frames = np.bincount(run[cue])
+    scale = np.minimum(1.0, params["tag_cap"] / frames[run[cue]])
+    accuracy = accuracy[cue]
+    for state in (H, A):
+        out[cue, state] += scale * np.where(side[cue] == state, np.log(accuracy),
+                                            np.log(1 - accuracy))
+    out[cue, D] += scale * np.log(0.5)
 
 
 def _binary(flag, p_alive, p_dead, where=None):

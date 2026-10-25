@@ -82,6 +82,7 @@ command and what to paste back.
 | E010c | 2026-10-22 | autonomous-mode | Classifier replaces the slow cue in gaps | drop: to_dead 0.141 -> 0.045 but change recall 0.284 -> 0.209, D share 35.4% -> 26.8% |
 | E010d | 2026-10-22 | autonomous-mode | Classifier's confident-alive call beside the slow cue | drop (narrow): to_dead 0.141 -> 0.100, D share 34.4%, but change recall 0.284 -> 0.249 (limit -0.02) |
 | E007a | 2026-10-22 | autonomous-mode | Set-piece tags vs our dead-ball edges (measurement) | stop: D already near 86% of set-piece starts (line 0.7); E007b not built |
+| E012 | 2026-10-25 | feat/e012-tag-cue | Smart Tagging phase tags as a team cue where the ball is untracked | stop: gate FAIL, right on only 0.29 / 0.32 of frames where E005c is wrong (line 0.50); code kept, off |
 
 ## Entry template
 
@@ -1149,3 +1150,90 @@ Fixed before any run (autonomous session):
   E010c's +0.013 here is inside the noise and its real run failed: still an upper bound, as the
   rules say. Open question for the human: hmm macroF1 (0.54) is below the vote's (0.63) on v2;
   likely the D class on v2's long dead gaps, not yet diagnosed.
+
+### E012 — Smart Tagging phase tags as a team cue where the ball is untracked
+
+- **Date / author / commit:** 2026-10-25, Hack Mavericks (design grilled with the human and
+  approved before code), `feat/e012-tag-cue`. Model freeze lifted for this one experiment only,
+  with a hard stop: gate passed by **2026-10-31**, or E012 is dropped and E005c is submitted.
+- **Hypothesis:** inside ball gaps the decoder has one team cue, E005c's classifier, and gap
+  change recall is still 0.284. Smart Tagging phases carry a side for the whole match: attacking
+  phases name the side with the ball, defending phases the side without it (E002, 1–5 tags per
+  code on the public window). As a second, capped team reading in gaps, a phase tag should help
+  the decoder place side changes it now misses. Risk, from DATA.md: Metrica infers the tags
+  from the same video and tracking we have, so their errors may overlap with the classifier's;
+  the gate checks that (3, 4 below).
+- **Design (all values fixed now, by reasoning; none chosen on any result):**
+  - **Groups.** Attacking = BUILD UP, PROGRESSION, LONG BALL, ATTACKING TRANSITION: cue side =
+    Team. Defending = DEFENDING IN ATTACKING / MIDDLE / DEFENSIVE THIRD, DEFENSIVE TRANSITION:
+    cue side = the other side. Every other code (BALL IN FINAL THIRD, IN THE BOX, PLAYERS IN THE
+    BOX, CREATING CHANCES, SET PIECES, GOALS) and every `N/A` Team is ignored. The mapping is
+    fixed; a group may be dropped by the gate, never flipped.
+  - **Where.** Graded frames with the ball untracked only, added beside the E005c cue. Seen-ball
+    frames keep the nearest-player cue alone.
+  - **Trim.** 1 s (25 frames) off each end of a tag; a tag shorter than 1 s after trimming is
+    skipped. Reason: tag times are automatic and possessions change near phase edges.
+  - **Overlaps.** Tags agreeing on a side count as one cue; frames where on-groups point to
+    different sides get no cue. Consequence: overlapping agreeing tags merge into one run, and
+    the cap below applies per run.
+  - **Cap.** Each run carries at most 25 frames' worth of evidence: per-frame scale
+    `min(1, 25 / untracked frames in the run)`. Reason: the decoder's `weight = 0.2` assumes
+    errors ~5 frames long, a wrong phase is one error hundreds of frames long (the E009 lesson);
+    25 is `missing_run_cap`'s value for the same reason (one run ≈ one independent reading).
+  - **Trust.** Each group's gate agreement (2), used as measured (E005c's value rule). Where
+    both groups cover a frame and agree, the higher of the two.
+  - **Fallback, fixed now:** if gate (4) shows the cue right on ≤ 0.6 of frames where the
+    classifier is confident, the cue applies only where the classifier is not confident
+    (`tag_unsure_only = True`).
+  - **Config:** `tag_acc_attack`, `tag_acc_defend` (None = off; both None = E005c exactly),
+    `tag_trim_s = 1.0`, `tag_cap = 25`, `tag_unsure_only = False`.
+- **Gate (real data, `tools/tag_gate.py`, masked harness seeds 0–4, reference = unmasked E005c,
+  per group):**
+  1. coverage: tags with a cue frame among the hidden in-play frames, and those frames;
+  2. agreement of the cue side with the reference on hidden frames alive in the reference;
+  3. on hidden frames where the masked E005c run gives the wrong side, the share where the cue
+     gives the reference side (does it add information, or echo our mistakes?);
+  4. (2) split by whether the classifier was confident on the masked run.
+
+  **Pass, per group:** (2) ≥ 0.80, (3) ≥ 0.50, ≥ 50 tags covered (mean over seeds). A failing
+  group is dropped; both failing stops E012. (4) decides the fallback above.
+- **Synthetic (correctness only, 3 full seeds):** cue off gives exactly E005c's labels; the cue
+  on raises masked gap change recall by any amount with tests green. Stop before the real run if
+  the cue on lowers spellF1 by more than 0.04 (mean over seeds).
+- **Criterion (real data, only if the gate passes; values from the gate in config). Keep only
+  if all hold**, same harness seeds as E005c:
+  1. masked gap `change_recall` ≥ **0.314** (E005c 0.284 + 0.03: a change that does not clearly
+     help is not worth breaking the freeze);
+  2. masked `to_dead` ≤ **0.151** (E005c 0.141 + 0.01: a team cue should not move dead calls);
+  3. full match: D share within 35.4% ± 2 points; possessions 250–400; home share does not move
+     more than 0.03 further from ~0.65;
+  4. public window: valid file, spellF1 > 0.2433 (pass/fail only, never compared with E005c).
+- **On keep:** config values, `hack_mavericks.md` (sha256, results, Smart Tagging row), CLAUDE.md
+  status, `make reproduce`. **On drop:** logged here, cue left off, main stays E005c.
+- **Synthetic (2026-10-25, full seeds 0–2, both groups at the 0.80 pass line):** cue off gives
+  E005c's labels exactly (asserted per seed). Cue on: spellF1 0.423 ± 0.007 → 0.432 ± 0.008,
+  macroF1 0.554 → 0.558, poss ratio 0.81 → 0.80; masked harness change recall 0.226 ± 0.032 →
+  0.251 ± 0.025 (up on all three seeds), wrong_side 0.290 → 0.278, to_dead ~0 either way (the
+  generator does not reproduce the real 0.141). **Passes** the synthetic step (no drop, recall
+  up). Warning, read before the real run: on synthetic data, where the tags agree with the
+  reference ~0.92 by construction, the recall gain is +0.025, already below the real
+  criterion's +0.03, and synthetic is an upper bound. The criterion stays as fixed.
+- **Real data, gate (human-run 2026-10-25; aggregates only).** Check first: `make submission` on
+  this branch (cue off) gives sha256 `a8ee1b28…`, E005c exactly. Context: 19,455 real untracked
+  in-play frames; 141 attacking and 140 defending tags after the trim, covering 0.132 and 0.271
+  of the real gaps.
+
+  | hidden in-play frames, seeds 0–4 | attacking | defending | pass line |
+  |---|---|---|---|
+  | (1) tags covered / frames | 67 ± 5 / 10,446 | 71 ± 4 / 10,650 | ≥ 50 tags ✓ |
+  | (2) agree with reference | 0.803 ± 0.019 | 0.779 ± 0.027 | ≥ 0.80: ✓ / ✗ |
+  | (3) right where masked E005c is wrong | **0.291 ± 0.075** (n 1,477) | **0.324 ± 0.040** (n 1,835) | ≥ 0.50 ✗ ✗ |
+  | (4) agree, classifier confident / unsure | 0.824 / 0.677 | 0.802 / 0.640 | fallback if ≤ 0.6: no |
+
+- **Decision: stop (gate FAIL, both groups).** The tags are ~80% right overall but right on only
+  ~30% of the frames where our model has the wrong side: their errors coincide with ours, as
+  DATA.md warns (Metrica infers them from the same video and tracking). They are also strongest
+  where the classifier is already confident (0.82) and weakest where it is not (0.64–0.68), so
+  the unsure-only fallback would not help either. Code kept, cue off (`tag_acc_* = None`); no
+  criterion run. **Lesson:** check (3), right-where-we-are-wrong, is the cheap test that a second
+  cue carries new information; plain agreement (2) passed for attacking and would have misled.
