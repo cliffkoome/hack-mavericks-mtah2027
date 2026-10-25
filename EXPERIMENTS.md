@@ -82,7 +82,7 @@ command and what to paste back.
 | E010c | 2026-10-22 | autonomous-mode | Classifier replaces the slow cue in gaps | drop: to_dead 0.141 -> 0.045 but change recall 0.284 -> 0.209, D share 35.4% -> 26.8% |
 | E010d | 2026-10-22 | autonomous-mode | Classifier's confident-alive call beside the slow cue | drop (narrow): to_dead 0.141 -> 0.100, D share 34.4%, but change recall 0.284 -> 0.249 (limit -0.02) |
 | E007a | 2026-10-22 | autonomous-mode | Set-piece tags vs our dead-ball edges (measurement) | stop: D already near 86% of set-piece starts (line 0.7); E007b not built |
-| E012 | 2026-10-25 | feat/e012-tag-cue | Smart Tagging phase tags as a team cue where the ball is untracked | designed; gate not yet run |
+| E012 | 2026-10-25 | feat/e012-tag-cue | Smart Tagging phase tags as a team cue where the ball is untracked | synthetic pass (recall +0.025); real gate not yet run |
 
 ## Entry template
 
@@ -1210,3 +1210,11 @@ Fixed before any run (autonomous session):
   4. public window: valid file, spellF1 > 0.2433 (pass/fail only, never compared with E005c).
 - **On keep:** config values, `hack_mavericks.md` (sha256, results, Smart Tagging row), CLAUDE.md
   status, `make reproduce`. **On drop:** logged here, cue left off, main stays E005c.
+- **Synthetic (2026-10-25, full seeds 0–2, both groups at the 0.80 pass line):** cue off gives
+  E005c's labels exactly (asserted per seed). Cue on: spellF1 0.423 ± 0.007 → 0.432 ± 0.008,
+  macroF1 0.554 → 0.558, poss ratio 0.81 → 0.80; masked harness change recall 0.226 ± 0.032 →
+  0.251 ± 0.025 (up on all three seeds), wrong_side 0.290 → 0.278, to_dead ~0 either way (the
+  generator does not reproduce the real 0.141). **Passes** the synthetic step (no drop, recall
+  up). Warning, read before the real run: on synthetic data, where the tags agree with the
+  reference ~0.92 by construction, the recall gain is +0.025, already below the real
+  criterion's +0.03, and synthetic is an upper bound. The criterion stays as fixed.
