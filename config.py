@@ -17,6 +17,9 @@ PARAMS = {
         "mean_possession_s": 12.0,  # typical possession length in elite football
         "stoppage_share": 0.3,      # share of possessions ending in a stoppage, not a turnover
         "mean_dead_s": 15.0,        # typical stoppage length
+        # E016: mean seconds in the loose-ball state L (alive, neither side), through which every
+        # turnover then goes; a duel or a ball in flight lasts about 1 s. None = no L (E005c).
+        "loose_s": None,
     },
 
     # hmm: per-frame evidence (evidence.py). Each value is a probability with a stated meaning.

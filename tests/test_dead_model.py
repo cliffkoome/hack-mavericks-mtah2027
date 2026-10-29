@@ -158,8 +158,6 @@ def test_e010_recipe_is_the_default_and_unchanged(synthetic):
     named, _ = dm.cross_half(tracking, spec, reference, recipe="e010")
     assert np.array_equal(default, named, equal_nan=True)
     assert PARAMS["evidence"]["gap_dead_recipe"] == "e010"
-    edge = gap_alive_run.switched_on(PARAMS, "lang", 1.0, 0.001)["evidence"]
-    assert (edge["gap_alive_alive"], edge["gap_alive_dead"]) == (0.99, 0.01)
 
 
 def test_no_slow_teacher_is_pass_1_without_the_slow_cue(synthetic):
@@ -192,3 +190,5 @@ def test_gap_alive_run_wires_the_measured_rates_rounded_and_leaves_config_alone(
     assert ev["gap_dead_recipe"] == "lang" and ev["gap_dead_teacher"] == "pass1"
     assert PARAMS["evidence"]["gap_alive_alive"] is None
     assert PARAMS["evidence"]["gap_dead_recipe"] == "e010"
+    edge = gap_alive_run.switched_on(PARAMS, "lang", 1.0, 0.001)["evidence"]
+    assert (edge["gap_alive_alive"], edge["gap_alive_dead"]) == (0.99, 0.01)

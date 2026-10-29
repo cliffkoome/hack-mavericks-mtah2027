@@ -43,8 +43,13 @@ def label(tracking, spec, params, tags=None):
 
 def first_pass(tracking, spec, params):
     """Pass-1 decoder codes: the evidence without any of the cues that need labels."""
-    log_emit = evidence.log_emissions(tracking, spec, params["evidence"])
+    log_emit = evidence.log_emissions(tracking, spec, params["evidence"], loose=_loose(params))
     return decoder.decode_match(log_emit, spec, params["decoder"])
+
+
+def _loose(params):
+    """Whether the decoder has the loose-ball state (E016)."""
+    return params["decoder"].get("loose_s") is not None
 
 
 def dead_teacher(tracking, spec, params, labels):
@@ -90,5 +95,5 @@ def _hmm(tracking, spec, params, tags=None):
         control = touches.last_touch(spec.n_frames, frames, sides,
                                      features.ball_visible(tracking), labels == D, spec.fps)
     log_emit = evidence.log_emissions(tracking, spec, ev, p_home=p_home, control=control,
-                                      p_dead=p_dead, tag=tag)
+                                      p_dead=p_dead, tag=tag, loose=_loose(params))
     return decoder.decode_match(log_emit, spec, params["decoder"])

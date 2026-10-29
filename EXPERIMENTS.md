@@ -86,6 +86,7 @@ command and what to paste back.
 | E013 | 2026-10-29 | feat/e013-lang-dead-model | Lang et al.'s full recipe (±80 s context, per-team features, 3.64 s median) for the dead/alive classifier | stop: gate 2 FAIL, bal 0.734 < 0.80 vs reference; vs public truth 0.864 (E010 0.784); code kept, off |
 | E014 | 2026-10-29 | feat/e013-lang-dead-model | Dead/alive classifier taught by labels decoded without the slow cue | stop: gate FAIL, 0.527 vs its own teacher, 0.687 vs truth (E013 0.864); refuted |
 | E015 | 2026-10-29 | feat/e013-lang-dead-model | E013's classifier in E010d's form: confident-alive beside the slow cue, gaps only | drop: to_dead 0.141 -> 0.085 but change recall 0.284 -> 0.176; side changes in gaps go through D |
+| E016 | 2026-10-29 | feat/e013-lang-dead-model | Loose-ball decoder state L (alive, team-neutral, ~1 s) for side changes in gaps; alone and with E015's cue | design fixed; not yet run |
 
 ## Entry template
 
@@ -1457,3 +1458,41 @@ Fixed before any run (autonomous session):
   half-dead (ball missing, slow play). Every alive cue removes that path. **The dead-ball loss
   cannot be fixed by evidence alone; the decoder needs another way to change sides in a gap.**
   That is the next experiment (E016), not another dead/alive cue.
+
+### E016 — A "loose ball" decoder state, so a side change in a gap need not go through D
+
+- **Date / author / commit:** 2026-10-29, Hack Mavericks, `feat/e013-lang-dead-model`. Design
+  approved by the human before code (option "build E016 as designed").
+- **Why:** E010c/d and E015 show the decoder finds side changes inside ball gaps through D. D is
+  the only state neutral on team (log 0.5 on every team cue), and in a gap it is also backed by
+  the missing-ball and slow cues. So when the side is unclear, D absorbs the uncertainty and the
+  side flips on the other side of it. Any alive cue removes that support, and recall falls with
+  it (0.284 → 0.249 → 0.176). The transition costs are not the reason: H→D→A costs 6.91 + 6.62 =
+  13.5 against 6.06 for H→A. What is missing is an **alive state that does not commit to a
+  team**: PathCRF's (KDD 2026) "ball in flight" edge, or a loose ball.
+- **Change (`decoder.py`, `evidence.py`; `decoder.loose_s`, None = off = E005c exactly):**
+  - **State L.** Evidence: the alive column's dead/alive cues (missing, outside, still, slow, gap
+    dead cues), and log 0.5 on every team cue, exactly as D gets it. So L = D's team terms + H's
+    and A's dead/alive terms.
+  - **Transitions.** All turnovers go through L: H→L at E005c's switch rate (H→A becomes 0).
+    L→H and L→A at 1 / (loose_s · fps) / 2 each; no L→D or D→L (a stoppage from a loose ball is
+    rare and goes H/A→D as now). `loose_s = 1.0`: a duel or a ball in flight lasts about a
+    second. H→L→A then costs 6.06 + 3.91 = 9.97: dearer than a direct switch was, cheaper than D.
+  - **Both passes.** It is the decoder, so pass 1 (which trains the gap classifiers) uses it too.
+  - **Output.** L is never written. An L run between H and A is split at its midpoint (first half
+    the side before, rest the side after); between two frames of one side, or next to one side
+    and D or a half's edge, it takes that side; with no side on either end, X (rare; forward-
+    filled by the scorer). The CSV keeps H/A/D/X.
+- **Variants, one tool run (`tools/loose_run.py`), each judged on its own:**
+  - **E016a: L alone.** Keep if all hold: masked `change_recall` ≥ **0.314** (+0.03; a decoder
+    change must clearly help); masked `to_dead` ≤ 0.151; D share 33.4–37.4% (E005c ± 2 points);
+    possessions 250–400, mean 10–20 s; truth untracked D called D ≥ 0.643.
+  - **E016b: L + E015's confident-alive cue** at E015's measured values (0.98 / 0.31, recipe
+    lang, measured under E005c; not re-measured, so no value is chosen after seeing E016a).
+    Keep criterion = E010d's, unchanged: `to_dead` ≤ 0.111 with `change_recall` ≥ 0.264; D share
+    31–45%, possessions 250–400, mean 10–20 s; truth floor ≥ 0.643.
+- **Synthetic (correctness only):** off = E005c's labels exactly; viterbi exact on hand-built
+  4-state inputs; L output resolved by the rules above; synthetic v2's D problem (E013) means its
+  numbers are reported, never read as gains.
+- **On keep:** a separate PR switches it on for the human to approve; then `make reproduce`,
+  `hack_mavericks.md`, status. **On drop:** logged, off.

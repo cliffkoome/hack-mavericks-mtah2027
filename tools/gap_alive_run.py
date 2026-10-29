@@ -64,6 +64,58 @@ def switched_on(params, recipe, rate_alive, rate_dead):
     return out
 
 
+def score(tracking, spec, params, gt):
+    """The criterion's aggregates for one config: masked harness (5 seeds), full-match shares and
+    the public-truth D floor. gt: label codes of the public (or synthetic) ground truth."""
+    _, rows, _ = masked_harness.run(tracking, spec, params, None, masked_harness.SEEDS)
+    stats = masked_harness.summarise(rows)
+    codes = pipeline.label(tracking, spec, params)
+    summary = submission.summary(codes, spec)
+    graded = summary["graded"]
+    truth_dead = (gt == D) & ~features.ball_visible(tracking)
+    return {
+        "to_dead": stats["to_dead"], "change_recall": stats["change_recall"],
+        "wrong_side": stats["wrong_side"][0], "agreement": stats["agreement"][0],
+        "d_share": graded["D"] / sum(graded.values()),
+        "n_possessions": summary["n_possessions"], "mean_s": summary["mean_possession_s"],
+        "home_share": summary["home_share"],
+        "truth_dead_called": float(np.mean(codes[truth_dead] == D)) if truth_dead.any()
+        else float("nan"),
+        "n_truth_dead": int(truth_dead.sum()),
+    }
+
+
+def print_score(s):
+    print("  masked to_dead {:.3f} ± {:.3f}   change_recall {:.3f} ± {:.3f}".format(
+        *s["to_dead"], *s["change_recall"]))
+    print("  masked wrong_side {:.3f}   agreement {:.3f}".format(s["wrong_side"], s["agreement"]))
+    print("  D share {:.3f}   possessions {}   mean {:.1f} s   home share {:.3f}".format(
+        s["d_share"], s["n_possessions"], s["mean_s"], s["home_share"]))
+    print("  truth D frames, ball untracked: called D {:.3f}  n {}".format(
+        s["truth_dead_called"], s["n_truth_dead"]))
+
+
+def criterion(s, to_dead_max, recall_min, d_share):
+    """[(name, ok)]: the pre-set checks, with the bounds each experiment fixed."""
+    return [
+        ("1. to_dead <= {} and change_recall >= {}".format(to_dead_max, recall_min),
+         s["to_dead"][0] <= to_dead_max and s["change_recall"][0] >= recall_min),
+        ("2. D share {}-{}, possessions {}-{}, mean {}-{} s".format(*d_share, *POSSESSIONS,
+                                                                    *MEAN_S),
+         d_share[0] <= s["d_share"] <= d_share[1]
+         and POSSESSIONS[0] <= s["n_possessions"] <= POSSESSIONS[1]
+         and MEAN_S[0] <= s["mean_s"] <= MEAN_S[1]),
+        ("3. truth untracked D called D >= {}".format(TRUTH_D_MIN),
+         s["truth_dead_called"] >= TRUTH_D_MIN),
+    ]
+
+
+def report(checks):
+    for name, ok in checks:
+        print(check(name, ok))
+    print("criterion: {}".format("KEEP" if all(ok for _, ok in checks) else "DROP"))
+
+
 def check(name, ok):
     return "  {:<58} {}".format(name, "PASS" if ok else "FAIL")
 
@@ -87,38 +139,11 @@ def main():
     print("  P(sure alive | dead)  {:.3f}  n {}   -> gap_alive_dead {}".format(
         rate_dead, n_dead, ev["gap_alive_dead"]))
 
-    _, rows, _ = masked_harness.run(tracking, spec, params, None, masked_harness.SEEDS)
-    stats = masked_harness.summarise(rows)
-    codes = pipeline.label(tracking, spec, params)
-    summary = submission.summary(codes, spec)
-    graded = summary["graded"]
-    d_share = graded["D"] / sum(graded.values())
     gt = pm.label_codes(pm.read_label_csv(args.gt))
-    truth_dead = (gt == D) & ~features.ball_visible(tracking)
-    called = float(np.mean(codes[truth_dead] == D)) if truth_dead.any() else float("nan")
-
     print("2. criterion (E005c: to_dead 0.141, change_recall 0.284, D 35.4%, 308 poss, 13.3 s)")
-    print("  masked to_dead {:.3f} ± {:.3f}   change_recall {:.3f} ± {:.3f}".format(
-        *stats["to_dead"], *stats["change_recall"]))
-    print("  masked wrong_side {:.3f}   agreement {:.3f}".format(
-        stats["wrong_side"][0], stats["agreement"][0]))
-    print("  D share {:.3f}   possessions {}   mean {:.1f} s   home share {:.3f}".format(
-        d_share, summary["n_possessions"], summary["mean_possession_s"], summary["home_share"]))
-    print("  truth D frames, ball untracked: called D {:.3f}  n {}".format(
-        called, int(truth_dead.sum())))
-    checks = [
-        ("1. to_dead <= {} and change_recall >= {}".format(TO_DEAD_MAX, RECALL_MIN),
-         stats["to_dead"][0] <= TO_DEAD_MAX and stats["change_recall"][0] >= RECALL_MIN),
-        ("2. D share {}-{}, possessions {}-{}, mean {}-{} s".format(*D_SHARE, *POSSESSIONS,
-                                                                    *MEAN_S),
-         D_SHARE[0] <= d_share <= D_SHARE[1]
-         and POSSESSIONS[0] <= summary["n_possessions"] <= POSSESSIONS[1]
-         and MEAN_S[0] <= summary["mean_possession_s"] <= MEAN_S[1]),
-        ("3. truth untracked D called D >= {}".format(TRUTH_D_MIN), called >= TRUTH_D_MIN),
-    ]
-    for name, ok in checks:
-        print(check(name, ok))
-    print("criterion: {}".format("KEEP" if all(ok for _, ok in checks) else "DROP"))
+    s = score(tracking, spec, params, gt)
+    print_score(s)
+    report(criterion(s, TO_DEAD_MAX, RECALL_MIN, D_SHARE))
     return 0
 
 
