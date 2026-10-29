@@ -83,7 +83,7 @@ command and what to paste back.
 | E010d | 2026-10-22 | autonomous-mode | Classifier's confident-alive call beside the slow cue | drop (narrow): to_dead 0.141 -> 0.100, D share 34.4%, but change recall 0.284 -> 0.249 (limit -0.02) |
 | E007a | 2026-10-22 | autonomous-mode | Set-piece tags vs our dead-ball edges (measurement) | stop: D already near 86% of set-piece starts (line 0.7); E007b not built |
 | E012 | 2026-10-25 | feat/e012-tag-cue | Smart Tagging phase tags as a team cue where the ball is untracked | stop: gate FAIL, right on only 0.29 / 0.32 of frames where E005c is wrong (line 0.50); code kept, off |
-| E013 | 2026-10-29 | feat/e013-lang-dead-model | Lang et al.'s full recipe (±80 s context, per-team features, 3.64 s median) for the dead/alive classifier | design fixed; gate not yet run |
+| E013 | 2026-10-29 | feat/e013-lang-dead-model | Lang et al.'s full recipe (±80 s context, per-team features, 3.64 s median) for the dead/alive classifier | stop: gate 2 FAIL, bal 0.734 < 0.80 vs reference; vs public truth 0.864 (E010 0.784); code kept, off |
 
 ## Entry template
 
@@ -1312,3 +1312,25 @@ Fixed before any run (autonomous session):
   `.venv/bin/python tools/dead_model_check.py --recipe lang --gt evaluation/gt/BAR-ATH_possession_gt_public.csv`.
   Paste back the whole output. Gate lines as fixed above; if it passes, E013b is run next with
   the rates from row (3), as written.
+- **Real data, gate (human-run 2026-10-29; aggregates only), E010's recipe beside it:**
+
+  | set | lang: bal / dead\|alive / dead\|dead | E010 (E010a) | decoded E005c | n |
+  |---|---|---|---|---|
+  | (1) hidden, reference alive: dead rate | 0.027 | 0.022 | to_dead 0.141 | 93,535 |
+  | (2) ball seen vs reference | **0.734** / 0.030 / 0.498 | 0.754 / 0.028 / 0.535 | — | 91,844 |
+  | (3) ball untracked vs reference | 0.820 / 0.013 / 0.654 | 0.811 / 0.021 / 0.643 | — | 64,079 |
+  | (4) public truth, ball untracked | 0.864 / 0.000 / 0.729 | 0.784 / 0.000 / 0.569 | 0.871 / 0.000 / 0.743 | 885 |
+
+  Not a gate: on the 127 public-truth untracked frames where decoded E005c is wrong dead/alive,
+  the lang classifier is right on 0.630. Gate 1 PASS, gate 2 **FAIL** (0.734 < 0.80), gate 3
+  PASS (0.864 ≥ 0.851) → **E013a gate FAIL**.
+- **Decision: stop** by the pre-set gate; E013b not built; `gap_dead_recipe = "e010"` stays and
+  the code is kept, unused. No line was moved after seeing the result.
+- **Reading:** the long context and per-team features did what the paper says *against truth*
+  (row 4: 0.784 → 0.864, now level with the decoder, and right on most of the frames the decoder
+  gets wrong: small n, not a selector), but not against our reference (row 2: no gain, it still
+  misses half the reference stoppages on seen frames). That is the risk written before the run:
+  the classifier is limited by its teacher. Its labels come from the pass-1 decoder, which the
+  slow cue helped make, and gate 2 scores it against those same labels, so a classifier that
+  disagrees with the slow cue's false alarms is marked wrong twice. **Next fix is the label
+  source, not the features** (E014: a teacher built without the slow cue).
