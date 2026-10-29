@@ -6,6 +6,7 @@ from possession import tagging, touches
 from possession import spec as spec_module
 
 MODELS = ("vote", "hmm")
+TEACHERS = ("pass1", "no_slow")
 
 
 def build(params, data_dir=None):
@@ -46,6 +47,18 @@ def first_pass(tracking, spec, params):
     return decoder.decode_match(log_emit, spec, params["decoder"])
 
 
+def dead_teacher(tracking, spec, params, labels):
+    """Labels the dead/alive classifier learns from (E014): the finalised pass-1 labels, or with
+    "no_slow" pass 1 decoded again without the slow-players cue."""
+    teacher = params["evidence"]["gap_dead_teacher"]
+    if teacher not in TEACHERS:
+        raise ValueError("unknown teacher {!r}; have {}".format(teacher, TEACHERS))
+    if teacher == "pass1":
+        return labels
+    no_slow = dict(params, evidence=dict(params["evidence"], slow_speed=None))
+    return rules.finalize(first_pass(tracking, spec, no_slow), spec)
+
+
 def _hmm(tracking, spec, params, tags=None):
     """Decoder codes. With the gap team cue (E005c) or the control cue (E009) on, two passes:
     pass 1 decodes without them. Its labels train the team-from-movement classifier half-to-half
@@ -68,7 +81,8 @@ def _hmm(tracking, spec, params, tags=None):
     if ev["gap_acc_strong"] is not None:
         p_home, _ = team_model.cross_half(tracking, spec, labels, ev["near_m"])
     if gap_dead:
-        p_dead, _ = dead_model.cross_half(tracking, spec, labels,
+        p_dead, _ = dead_model.cross_half(tracking, spec,
+                                          dead_teacher(tracking, spec, params, labels),
                                           recipe=ev["gap_dead_recipe"])
     if ev["control_acc"] is not None:
         holder, _ = touches.held(tracking, ev["near_m"])

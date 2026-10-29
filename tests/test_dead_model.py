@@ -158,3 +158,24 @@ def test_e010_recipe_is_the_default_and_unchanged(synthetic):
     named, _ = dm.cross_half(tracking, spec, reference, recipe="e010")
     assert np.array_equal(default, named, equal_nan=True)
     assert PARAMS["evidence"]["gap_dead_recipe"] == "e010"
+
+
+def test_no_slow_teacher_is_pass_1_without_the_slow_cue(synthetic):
+    import copy
+
+    from possession import rules
+
+    data_dir, _ = synthetic
+    spec = spec_module.load(data_dir)
+    tracking = atd.load(spec, data_dir)
+    labels = pipeline.label(tracking, spec, PARAMS)
+    assert pipeline.dead_teacher(tracking, spec, PARAMS, labels) is labels  # default: pass1
+    params = copy.deepcopy(PARAMS)
+    params["evidence"]["gap_dead_teacher"] = "no_slow"
+    teacher = pipeline.dead_teacher(tracking, spec, params, labels)
+    params["evidence"]["slow_speed"] = None
+    expected = rules.finalize(pipeline.first_pass(tracking, spec, params), spec)
+    assert np.array_equal(teacher, expected)
+    params["evidence"]["gap_dead_teacher"] = "nope"
+    with pytest.raises(ValueError, match="teacher"):
+        pipeline.dead_teacher(tracking, spec, params, labels)

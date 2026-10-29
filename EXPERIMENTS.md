@@ -84,6 +84,7 @@ command and what to paste back.
 | E007a | 2026-10-22 | autonomous-mode | Set-piece tags vs our dead-ball edges (measurement) | stop: D already near 86% of set-piece starts (line 0.7); E007b not built |
 | E012 | 2026-10-25 | feat/e012-tag-cue | Smart Tagging phase tags as a team cue where the ball is untracked | stop: gate FAIL, right on only 0.29 / 0.32 of frames where E005c is wrong (line 0.50); code kept, off |
 | E013 | 2026-10-29 | feat/e013-lang-dead-model | Lang et al.'s full recipe (±80 s context, per-team features, 3.64 s median) for the dead/alive classifier | stop: gate 2 FAIL, bal 0.734 < 0.80 vs reference; vs public truth 0.864 (E010 0.784); code kept, off |
+| E014 | 2026-10-29 | feat/e013-lang-dead-model | Dead/alive classifier taught by labels decoded without the slow cue | design fixed; gate not yet run |
 
 ## Entry template
 
@@ -1334,3 +1335,47 @@ Fixed before any run (autonomous session):
   slow cue helped make, and gate 2 scores it against those same labels, so a classifier that
   disagrees with the slow cue's false alarms is marked wrong twice. **Next fix is the label
   source, not the features** (E014: a teacher built without the slow cue).
+
+### E014 — A teacher without the slow cue for the dead/alive classifier
+
+- **Date / author / commit:** 2026-10-29, Hack Mavericks, `feat/e013-lang-dead-model` (follows
+  E013 on the same branch). Chosen by the human from three options after E013's gate; design
+  written here before any code.
+- **Hypothesis:** E013's classifier is limited by its labels, not its features. It learns from
+  pass-1 labels the slow-players cue helped make, so it partly copies that cue, including its
+  false alarms in slow play (the loss E010 diagnosed). Trained instead on labels decoded *without*
+  the slow cue, it learns dead/alive from the ball evidence on seen frames (ball outside, still,
+  missing around it, nearest player), which the player-movement features can then generalise into
+  the gaps. E013's truth row (0.864, level with the decoder) says the features are good enough.
+- **One change:** the teacher. `gap_dead_teacher`: `"pass1"` (E010/E013: the pass-1 labels) or
+  `"no_slow"`: pass 1 decoded with `slow_speed = None`, everything else as config (E001's cues),
+  finalised by the same rules. Recipe `"lang"` (E013) as built; training frames (ball seen),
+  folds, subsampling and model unchanged. The pass-1 labels still train the gap team classifier
+  (E005c), untouched.
+- **Known trade:** without the slow cue, pass 1 over-calls D in gaps (E001: D share 45.3%). The
+  classifier trains on ball-seen frames only, where the ball cues decide, so this should not reach
+  its labels much; gate 2 below reports the teacher's D share on its training frames to show it.
+- **E014a gate (`tools/dead_model_check.py --recipe lang --teacher no_slow`), lines as E010a:**
+  1. hidden in-play frames (5 seeds): classifier dead rate ≤ half the masked decoder's `to_dead`
+     (decoder = E005c, unchanged);
+  2. ball-seen frames, cross-half, vs **the teacher it trained on**: balanced accuracy ≥ **0.80**
+     (can it learn dead/alive from movement at all, with labels not made from movement). The
+     same rates vs the E005c reference are printed beside it, not a gate;
+  3. public truth, ball untracked: balanced accuracy ≥ decoded E005c's − 0.02.
+
+  Printed, not a gate (n ≈ 127, too small to decide): right where decoded E005c is wrong.
+- **E014b, only if the gate passes:** E010c's form exactly (classifier call replaces the slow
+  cue on untracked frames; rates from gate row (3) **vs the E005c reference** used as measured,
+  since that is what the decoder's other cues are calibrated to). **Keep criterion = E010c's,
+  unchanged:** masked `to_dead` ≤ 0.111 with `change_recall` ≥ 0.264; D share 31–45%,
+  possessions 250–400, mean 10–20 s; public-truth untracked D frames called D ≥ 0.643.
+- **Risk:** without the slow cue, D on seen frames comes mostly from "ball missing nearby" and
+  "ball outside"; if those mark too few stoppages, the classifier sees few dead examples and
+  under-calls D (E010c's failure). Criterion 2's D-share floor catches it.
+- **Synthetic (2026-10-29, correctness only):** 155 tests pass, including: the default teacher
+  returns the pass-1 labels unchanged, and `"no_slow"` equals pass 1 decoded with
+  `slow_speed = None`, finalised. With the cue off nothing reads the teacher, so labels are
+  E005c's. The gate tool runs with `--teacher no_slow` on full-seed0; its numbers there are not
+  readable for the reason logged under E013 (v2 has almost no D; G3).
+- **Real-data gate, for the human** (aggregates only; about 4 minutes):
+  `.venv/bin/python tools/dead_model_check.py --recipe lang --teacher no_slow --gt evaluation/gt/BAR-ATH_possession_gt_public.csv`.

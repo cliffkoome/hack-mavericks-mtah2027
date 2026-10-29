@@ -64,6 +64,10 @@ PARAMS = {
         # E013: which recipe the dead/alive classifier uses (dead_model.RECIPES). "e010" = E010's;
         # "lang" = Lang et al.'s full recipe. Read only when a gap dead cue above is on.
         "gap_dead_recipe": "e010",
+        # E014: the labels the dead/alive classifier learns from. "pass1" = the pass-1 labels
+        # (E010/E013); "no_slow" = pass 1 decoded without the slow cue, so the classifier cannot
+        # copy that cue's false alarms. Read only when a gap dead cue above is on.
+        "gap_dead_teacher": "pass1",
         # E010d (off): on untracked frames, beside the slow cue, "confidently alive" =
         # p_dead <= 0.3 as a yes/no cue. Rates measured against the pass-1 reference.
         "gap_alive_alive": None,    # P(confidently alive | alive); 0.968 measured; None = off
