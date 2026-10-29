@@ -85,6 +85,7 @@ command and what to paste back.
 | E012 | 2026-10-25 | feat/e012-tag-cue | Smart Tagging phase tags as a team cue where the ball is untracked | stop: gate FAIL, right on only 0.29 / 0.32 of frames where E005c is wrong (line 0.50); code kept, off |
 | E013 | 2026-10-29 | feat/e013-lang-dead-model | Lang et al.'s full recipe (±80 s context, per-team features, 3.64 s median) for the dead/alive classifier | stop: gate 2 FAIL, bal 0.734 < 0.80 vs reference; vs public truth 0.864 (E010 0.784); code kept, off |
 | E014 | 2026-10-29 | feat/e013-lang-dead-model | Dead/alive classifier taught by labels decoded without the slow cue | stop: gate FAIL, 0.527 vs its own teacher, 0.687 vs truth (E013 0.864); refuted |
+| E015 | 2026-10-29 | feat/e013-lang-dead-model | E013's classifier in E010d's form: confident-alive beside the slow cue, gaps only | design fixed; not yet run |
 
 ## Entry template
 
@@ -1400,3 +1401,39 @@ Fixed before any run (autonomous session):
   information, learned back; the teacher was not hiding a better one. Five tries now (E010a/c/d,
   E013, E014) say the same: a dead/alive reading from player movement alone does not beat the
   slow cue in gaps. The remaining loss is where slow play and a stoppage look alike to movement.
+
+### E015 — E013's classifier in E010d's form (confident "alive" beside the slow cue)
+
+- **Date / author / commit:** 2026-10-29, Hack Mavericks, `feat/e013-lang-dead-model`. Chosen by
+  the human after E014; design written here before any code.
+- **Why this is a new experiment, not a rescue of E013's gate:** the same step E010d took after
+  E010a's gate failed. The gate asks whether the classifier replaces the decoder's dead/alive
+  reading; E010d showed a narrower use comes closest: keep the slow cue (and its stoppage recall)
+  and only *add* the classifier's confident "alive" call in gaps. E010d missed by 0.015 on change
+  recall (0.249 vs 0.264, seed spread ± 0.077). E013's classifier is the better reader against
+  truth on untracked frames (0.864 vs E010's 0.784, row 4), so the same form with it is the test.
+- **One change from E010d:** the classifier's recipe, `"e010"` → `"lang"` (teacher `"pass1"`).
+  Everything else is E010d's: on untracked frames, beside the slow cue, the yes/no cue
+  "confidently alive" = `p_dead ≤ 0.3`; ball-seen frames unchanged.
+- **Value rule (E010d's, automated so no value is chosen by hand):** P(confidently alive | alive)
+  and P(confidently alive | dead), measured on decoded ball-untracked frames against the pass-1
+  labels the classifier trains on, rounded to 2 decimals, wired in as `gap_alive_alive` /
+  `gap_alive_dead`. `tools/gap_alive_run.py` measures them and runs the criterion with them in
+  the same invocation. Guard, added before any real run after a synthetic smoke run hit it: each
+  rounded rate is kept in [0.01, 0.99], since a rate of 0 or 1 makes the cue an infinite veto
+  (log 0). E010d's measured rates (0.97, 0.30) are inside it, so it changes nothing there.
+- **Known compromise (E010d's):** two movement cues on one frame are correlated, so their combined
+  evidence is overstated; the D-share and truth floors catch the failure that would cause.
+- **Keep criterion = E010d's (= E010c's), unchanged; all must hold:**
+  1. masked harness (5 seeds) vs the unmasked reference of the same config: `to_dead` ≤ 0.111
+     and `change_recall` ≥ 0.264 (E005c: 0.141, 0.284);
+  2. full match: D share of graded frames 31–45%, possessions 250–400, mean 10–20 s;
+  3. public truth frames with the ball untracked: truth-D frames called D ≥ 0.643.
+- **On keep:** config switched on in a separate PR the human approves, then `make reproduce`,
+  `hack_mavericks.md` and the status. **On drop:** logged, cue off, main stays E005c.
+- **Synthetic smoke run (2026-10-29, full-seed0, correctness only):** the tool runs end to end in
+  ~10 min. Its rates there hit the edge the guard now covers (P(sure alive | dead) 1.000 on only
+  468 pass-1 dead untracked frames). The criterion numbers are not readable (v2 has almost no D;
+  see E013, G3). Tests: the rates are rounded and clamped, and config stays off.
+- **Real-data run, for the human** (aggregates only; ~10–15 min):
+  `.venv/bin/python tools/gap_alive_run.py --gt evaluation/gt/BAR-ATH_possession_gt_public.csv`.
