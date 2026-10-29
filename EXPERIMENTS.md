@@ -86,7 +86,8 @@ command and what to paste back.
 | E013 | 2026-10-29 | feat/e013-lang-dead-model | Lang et al.'s full recipe (±80 s context, per-team features, 3.64 s median) for the dead/alive classifier | stop: gate 2 FAIL, bal 0.734 < 0.80 vs reference; vs public truth 0.864 (E010 0.784); code kept, off |
 | E014 | 2026-10-29 | feat/e013-lang-dead-model | Dead/alive classifier taught by labels decoded without the slow cue | stop: gate FAIL, 0.527 vs its own teacher, 0.687 vs truth (E013 0.864); refuted |
 | E015 | 2026-10-29 | feat/e013-lang-dead-model | E013's classifier in E010d's form: confident-alive beside the slow cue, gaps only | drop: to_dead 0.141 -> 0.085 but change recall 0.284 -> 0.176; side changes in gaps go through D |
-| E016 | 2026-10-29 | feat/e013-lang-dead-model | Loose-ball decoder state L (alive, team-neutral, ~1 s) for side changes in gaps; alone and with E015's cue | design fixed; not yet run |
+| E016 | 2026-10-29 | feat/e013-lang-dead-model | Loose-ball decoder state L (alive, team-neutral, ~1 s) for side changes in gaps; alone and with E015's cue | drop both: E016b to_dead 0.090 with recall 0.278 (trade-off solved) but possessions 223 < 250 (every switch dearer) |
+| E017 | 2026-10-29 | feat/e013-lang-dead-model | Loose-ball state as an extra route, direct switch kept; alone and with E015's cue | design fixed; not yet run |
 
 ## Entry template
 
@@ -1506,3 +1507,46 @@ Fixed before any run (autonomous session):
   possessions down, this is the first suspect.
 - **Real-data run, for the human** (aggregates only; ~10–15 min):
   `.venv/bin/python tools/loose_run.py --gt evaluation/gt/BAR-ATH_possession_gt_public.csv`.
+- **Real data** (human-run 2026-10-29; aggregates only):
+
+  | | E005c | E015 (cue, no L) | E016a (L) | E016b (L + cue) |
+  |---|---|---|---|---|
+  | masked `to_dead` | 0.141 | 0.085 | 0.132 ± 0.010 | **0.090 ± 0.010** |
+  | masked `change_recall` | 0.284 | 0.176 | 0.258 ± 0.047 | **0.278 ± 0.035** |
+  | masked wrong_side / agreement | 0.161 / 0.700 | 0.174 / 0.742 | 0.130 / 0.740 | 0.148 / 0.761 |
+  | D share | 35.4% | 34.1% | 35.3% | 34.2% |
+  | possessions / mean | 308 / 13.3 s | 306 / 13.7 s | **225** / 18.3 s | **223** / 18.8 s |
+  | home share | 0.594 | 0.597 | 0.602 | 0.605 |
+  | truth untracked D called D | 0.743 | 0.741 | 0.743 | 0.696 |
+  | criterion | — | drop | 1 ✗, 2 ✗, 3 ✓ | 1 ✓, **2 ✗**, 3 ✓ |
+
+- **Decision: drop both** (pre-set criteria); `loose_s = None` stays.
+- **Reading:** E016b answers E010–E015's question: with a team-neutral alive state, the alive
+  cue no longer costs side changes in gaps (recall 0.176 → 0.278 at `to_dead` 0.090), and
+  wrong-side and agreement improve too. It fails on the suspect logged before the run: routing
+  *every* turnover through L raised a switch's cost from 6.06 to 9.97 on all frames, ball seen or
+  not, so possessions fell 308 → 223. The fix is structural, not a value: keep the direct switch
+  and add L as a second route (E017).
+
+### E017 — The loose-ball state as an extra route, the direct switch kept
+
+- **Date / author / commit:** 2026-10-29, Hack Mavericks, `feat/e013-lang-dead-model`. Follows
+  E016's logged suspect; written before any code. No value is new or chosen on a result.
+- **Change (one, from E016):** the H and A rows of the 4-state matrix keep E005c's direct switch
+  *and* add H→L at the same rate: H → [1 − end − switch, switch, stop, switch] (`decoder.
+  loose_keep_switch = True`). A turnover then costs 6.06 as in E005c; H→L→A costs 9.97 and is
+  taken only where L's team-neutral, alive evidence pays the difference (inside gaps). Staying
+  costs log(1 − end − switch) instead of log(1 − end): 0.0057 instead of 0.0033 nats a frame.
+  `loose_s = 1.0`, the L state's evidence and the output rule are E016's.
+- **Variants and criteria = E016's, unchanged** (`tools/loose_run.py --keep-switch`):
+  E017a (L alone): `change_recall` ≥ 0.314, `to_dead` ≤ 0.151, D share 33.4–37.4%, possessions
+  250–400, mean 10–20 s, truth floor ≥ 0.643. E017b (L + E015's cue at 0.98 / 0.31): `to_dead` ≤
+  0.111 with `change_recall` ≥ 0.264, D share 31–45%, possessions 250–400, mean 10–20 s, truth
+  floor ≥ 0.643.
+- **Risk:** with the direct switch kept, L may rarely be cheaper than D or a direct switch, and
+  E017b falls back towards E015 (recall collapse). The table will show which.
+- **Built (2026-10-29):** `decoder.loose_keep_switch` (False = E016), `tools/loose_run.py
+  --keep-switch`; 179 tests pass, including the 4-state rows: direct switch and H→D at E005c's
+  rates, H→L at the switch rate, stay reduced by the switch rate. Off unchanged (L off reads no
+  new key). **Real-data run, for the human** (~10–15 min):
+  `.venv/bin/python tools/loose_run.py --keep-switch --gt evaluation/gt/BAR-ATH_possession_gt_public.csv`.

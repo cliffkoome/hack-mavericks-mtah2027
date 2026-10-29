@@ -20,6 +20,9 @@ PARAMS = {
         # E016: mean seconds in the loose-ball state L (alive, neither side), through which every
         # turnover then goes; a duel or a ball in flight lasts about 1 s. None = no L (E005c).
         "loose_s": None,
+        # E017: keep the direct H <-> A switch beside L (L is a second route), so a turnover
+        # costs what it did without L. False = E016 (every turnover through L).
+        "loose_keep_switch": False,
     },
 
     # hmm: per-frame evidence (evidence.py). Each value is a probability with a stated meaning.

@@ -12,7 +12,8 @@ decoded on its own from its kickoff, so nothing carries across halftime, and the
 kickoff are left to rules.finalize (they are D).
 
 With `loose_s` set (E016), a fourth state L, "loose ball": alive but committed to neither side
-(a duel, a ball in flight). Every turnover goes H -> L -> A. Inside a ball gap the side is often
+(a duel, a ball in flight). Every turnover goes H -> L -> A; with `loose_keep_switch` (E017) the
+direct H -> A switch stays at its rate and L is a second route, so a turnover costs what it did. Inside a ball gap the side is often
 unclear, and without L the only team-neutral state is D, so side changes there went through D
 and every alive cue cost side-change recall (E010c/d, E015). L is never written: resolve_loose
 gives its frames to the sides around it.
@@ -38,8 +39,9 @@ def transition_matrix(params, fps):
                            [restart / 2, restart / 2, 1 - restart]])
     else:
         leave = 1.0 / (params["loose_s"] * fps)
-        matrix = np.array([[1 - end, 0.0, stop, switch],
-                           [0.0, 1 - end, stop, switch],
+        direct = switch if params.get("loose_keep_switch") else 0.0
+        matrix = np.array([[1 - end - direct, direct, stop, switch],
+                           [direct, 1 - end - direct, stop, switch],
                            [restart / 2, restart / 2, 1 - restart, 0.0],
                            [leave / 2, leave / 2, 0.0, 1 - leave]])
     with np.errstate(divide="ignore"):

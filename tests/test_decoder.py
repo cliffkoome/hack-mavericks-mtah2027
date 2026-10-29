@@ -444,3 +444,23 @@ def test_loose_run_variants_change_only_what_e016_says():
         == (0.98, 0.31)
     assert with_cue["evidence"]["gap_dead_recipe"] == "lang"
     assert PARAMS["decoder"]["loose_s"] is None
+
+
+def test_keep_switch_keeps_the_direct_switch_and_adds_l_beside_it():
+    log_trans = decoder.transition_matrix(dict(LOOSE, loose_keep_switch=True), FPS)
+    trans, old = np.exp(log_trans), np.exp(LOG_TRANS)
+    assert np.allclose(trans.sum(axis=1), 1.0)
+    assert trans[H, A] == pytest.approx(old[H, A]) and trans[A, H] == pytest.approx(old[A, H])
+    assert trans[H, decoder.L] == pytest.approx(old[H, A])
+    assert trans[H, D] == pytest.approx(old[H, D])
+    assert trans[H, H] == pytest.approx(old[H, H] - old[H, A])
+    assert PARAMS["decoder"]["loose_keep_switch"] is False
+
+
+def test_loose_run_keep_switch_variants():
+    import loose_run
+
+    names = list(loose_run.variants(PARAMS, keep_switch=True))
+    assert names[0].startswith("E017a") and names[1].startswith("E017b")
+    for params, _ in loose_run.variants(PARAMS, keep_switch=True).values():
+        assert params["decoder"]["loose_keep_switch"] is True
