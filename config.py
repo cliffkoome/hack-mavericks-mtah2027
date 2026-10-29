@@ -61,6 +61,9 @@ PARAMS = {
         # (dead_model.py) replaces the slow-players cue. Rates measured in E010a row (3).
         "gap_dead_alive": None,     # P(classifier says dead | alive); 0.021 measured; None = off
         "gap_dead_dead": 0.64,      # P(classifier says dead | dead); 0.643 measured
+        # E013: which recipe the dead/alive classifier uses (dead_model.RECIPES). "e010" = E010's;
+        # "lang" = Lang et al.'s full recipe. Read only when a gap dead cue above is on.
+        "gap_dead_recipe": "e010",
         # E010d (off): on untracked frames, beside the slow cue, "confidently alive" =
         # p_dead <= 0.3 as a yes/no cue. Rates measured against the pass-1 reference.
         "gap_alive_alive": None,    # P(confidently alive | alive); 0.968 measured; None = off

@@ -43,6 +43,9 @@ def variants():
     gap_dead = dict(copy.deepcopy(PARAMS), model="hmm")
     gap_dead["evidence"]["gap_dead_alive"] = 0.02
     out["hmm gap-dead (E010c)"] = gap_dead
+    lang = copy.deepcopy(gap_dead)
+    lang["evidence"]["gap_dead_recipe"] = "lang"
+    out["hmm gap-dead lang (E013)"] = lang
     # E012 at the gate's pass line for both groups: a correctness check, not a value choice.
     tag_cue = dict(copy.deepcopy(PARAMS), model="hmm")
     tag_cue["evidence"].update(tag_acc_attack=0.8, tag_acc_defend=0.8)

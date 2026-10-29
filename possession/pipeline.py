@@ -68,7 +68,8 @@ def _hmm(tracking, spec, params, tags=None):
     if ev["gap_acc_strong"] is not None:
         p_home, _ = team_model.cross_half(tracking, spec, labels, ev["near_m"])
     if gap_dead:
-        p_dead, _ = dead_model.cross_half(tracking, spec, labels)
+        p_dead, _ = dead_model.cross_half(tracking, spec, labels,
+                                          recipe=ev["gap_dead_recipe"])
     if ev["control_acc"] is not None:
         holder, _ = touches.held(tracking, ev["near_m"])
         frames, sides = touches.controls(holder)

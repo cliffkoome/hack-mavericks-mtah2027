@@ -83,6 +83,7 @@ command and what to paste back.
 | E010d | 2026-10-22 | autonomous-mode | Classifier's confident-alive call beside the slow cue | drop (narrow): to_dead 0.141 -> 0.100, D share 34.4%, but change recall 0.284 -> 0.249 (limit -0.02) |
 | E007a | 2026-10-22 | autonomous-mode | Set-piece tags vs our dead-ball edges (measurement) | stop: D already near 86% of set-piece starts (line 0.7); E007b not built |
 | E012 | 2026-10-25 | feat/e012-tag-cue | Smart Tagging phase tags as a team cue where the ball is untracked | stop: gate FAIL, right on only 0.29 / 0.32 of frames where E005c is wrong (line 0.50); code kept, off |
+| E013 | 2026-10-29 | feat/e013-lang-dead-model | Lang et al.'s full recipe (±80 s context, per-team features, 3.64 s median) for the dead/alive classifier | design fixed; gate not yet run |
 
 ## Entry template
 
@@ -1237,3 +1238,77 @@ Fixed before any run (autonomous session):
   the unsure-only fallback would not help either. Code kept, cue off (`tag_acc_* = None`); no
   criterion run. **Lesson:** check (3), right-where-we-are-wrong, is the cheap test that a second
   cue carries new information; plain agreement (2) passed for attacking and would have misled.
+
+### E013 — Lang et al.'s full recipe for the dead/alive classifier
+
+- **Date / author / commit:** 2026-10-29, Hack Mavericks, `feat/e013-lang-dead-model`. Design
+  written here before any code. Freeze: the human lifted the 31 Oct hard stop for experiments on
+  separate branches; main stays E005c until a criterion passes.
+- **Why now:** the prior-art review (`docs/research/possession-prior-art.md`) singles out Lang et
+  al. 2022 (Sci Rep, DOI 10.1038/s41598-022-19948-1) as the published fix for the loss E010
+  diagnosed: slow play with the ball unseen called dead (masked `to_dead` 0.141; slow cue firing
+  on 0.883 of those frames). E010a borrowed Lang's idea only in part and failed its gate (balanced
+  accuracy 0.754 on ball-seen frames, line 0.80). It differs from the paper in three ways, and the
+  paper reports 92% frame accuracy with all three:
+  1. **context:** E010 looks at most ±8 s away; Lang uses ±0.4, 0.8, 2, 4, 20, 40, 80 s. The
+     long offsets are what separate a stoppage (the regrouping before a restart, the burst after
+     it) from a slow build-up, which looks the same within a few seconds;
+  2. **per-team features:** E010 pools all players' speeds and spread; Lang feeds each team
+     separately, positions and accelerations included, with home and away swapped as data
+     augmentation;
+  3. **smoothing:** Lang median-filters the frame predictions over 3.64 s (91 frames).
+- **Hypothesis:** with the full recipe, the classifier passes E010a's gate, which E010's partial
+  version did not; then, in E010c's form, it lowers `to_dead` *without* the missed stoppages that
+  sank E010c (D share 26.8%, change recall 0.209).
+- **One change:** the classifier's recipe (`dead_model.py`, `recipe="lang"`). E010's recipe stays
+  bit-for-bit as it is. Training set, labels (pass-1 reference on ball-seen frames), half-to-half
+  folds, every-5th-frame subsampling, model (HistGradientBoosting, library defaults, seed 0,
+  single-threaded) are E010's, so the recipe is the only difference.
+- **Recipe, all values fixed now from the paper or from existing code, none from a result:**
+  - offsets: 0, ±0.4, ±0.8, ±2, ±4, ±20, ±40, ±80 s (Lang, as published);
+  - features per frame: E010's eight over all players, plus per team (H, A; slots from the
+    metadata) seven: centroid x in attack-normalised coordinates (`team_model.attack_sign`),
+    centroid y, std x, std y, speed p50, speed p90, mean |acceleration| (from the speed's change
+    over ±0.2 s, `team_model.VELOCITY_S`). Each smoothed over ±0.5 s as in E010. Positions in
+    attack-normalised x so a team's shape means the same thing in both halves;
+  - augmentation: each training example also with H and A exchanged; predictions averaged with
+    the swapped prediction (as `team_model`), so no home prior is learned;
+  - smoothing: centred median filter of 91 frames (3.64 s at 25 fps, Lang) on P(dead), within
+    each predicted half's decoded frames.
+- **E013a gate = E010a's gate, same lines, same tool** (`tools/dead_model_check.py --recipe lang`):
+  1. hidden in-play frames (5 seeds): classifier dead rate ≤ half the masked decoder's `to_dead`;
+  2. ball-seen frames vs reference, cross-half: balanced accuracy ≥ **0.80**;
+  3. public truth, ball untracked: balanced accuracy ≥ decoded E005c's − 0.02.
+
+  Also printed, not a gate (the E012 lesson, for reading only): on public-truth untracked frames
+  where decoded E005c is wrong dead/alive, the share the classifier gets right.
+- **E013b, only if the gate passes:** E010c's form exactly: on untracked frames the classifier's
+  call (`p_dead ≥ 0.5`) replaces the slow cue, with its rates from gate row (3) used as measured
+  (`gap_dead_alive`, `gap_dead_dead`; `gap_dead_recipe = "lang"`). **Keep criterion = E010c's
+  three, unchanged:** masked `to_dead` ≤ 0.111 with `change_recall` ≥ 0.264; D share 31–45%,
+  possessions 250–400, mean 10–20 s; public-truth untracked D frames called D ≥ 0.643.
+- **Synthetic (correctness only):** `recipe="e010"` gives E010's p_dead exactly; off gives
+  E005c's labels exactly; the lang recipe runs on full synthetic seeds 0–2 and its variant is
+  reported beside E010c's, never used to choose.
+- **Risk, written before the run:** the classifier still learns from pass-1 labels, which the
+  slow cue helped make; if the teacher's errors are the limit, no recipe passes gate 2 and E013
+  stops there. That would itself be the finding: the next fix is the label source, not features.
+- **Synthetic (2026-10-29, correctness only).** Tests: 154 pass, including "e010" is the default
+  and gives E010's P(dead) exactly, the lang recipe never trains on the half it predicts, is
+  deterministic, gives the same prediction with H and A exchanged, and its output is exactly the
+  91-frame median of the raw prediction. With the cue off nothing reads the classifier, so labels
+  are E005c's. The gate tool runs with both recipes on full-seed0 (e010 132 s, lang 168 s).
+  **Its numbers there are not readable, and this is a generator finding, not an E013 one:** on
+  v2 the decoded reference calls D on 1.1% of decoded frames where the truth has 28.1% (truth
+  D frames called D: 0.039), so there are almost no dead labels to learn from (both recipes:
+  balanced accuracy 0.52–0.61 vs reference). Likely cause: v2 caps players at
+  `DEAD_PLAYER_SPEED = 1.5` m/s at a stoppage, above the slow cue's 1.25 m/s line, so the slow
+  cue hardly fires (0.004 of reference-dead seen frames), while on real data the median is below
+  1.25 on 62% of dead frames (E003). This probably also explains G2's open question (hmm macroF1
+  0.54 vs the vote's 0.63). `synthetic_eval.py` was not run for E013: with D almost absent its
+  dead-ball variants say nothing. Follow-up **G3**: make v2's stoppage speeds match E003's
+  measured share, then re-run G2's table. Not part of E013 (one change per experiment).
+- **Real-data gate, for the human** (aggregates only; about 3 minutes):
+  `.venv/bin/python tools/dead_model_check.py --recipe lang --gt evaluation/gt/BAR-ATH_possession_gt_public.csv`.
+  Paste back the whole output. Gate lines as fixed above; if it passes, E013b is run next with
+  the rates from row (3), as written.
