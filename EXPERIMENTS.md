@@ -1496,3 +1496,13 @@ Fixed before any run (autonomous session):
   numbers are reported, never read as gains.
 - **On keep:** a separate PR switches it on for the human to approve; then `make reproduce`,
   `hack_mavericks.md`, status. **On drop:** logged, off.
+- **Synthetic (2026-10-29, full-seed0, correctness only):** 177 tests pass; off gives the previous
+  commit's synthetic CSV byte for byte (same sha256). Tool runs in ~10 min. Warning, logged before
+  the real run: on synthetic, E016a *lowers* masked change recall (0.185 ± 0.003 vs E005c's 0.226
+  on v2) with fewer possessions (254). Routing every turnover through L raises a switch's cost
+  from 6.06 to 9.97 everywhere, and v2 has almost no D (E013), so there is no D route for L to
+  replace: only the dearer switch shows. On real data gaps do go through D, so the trade may run
+  the other way; the design and criterion stay as fixed. If E016a fails on real data with
+  possessions down, this is the first suspect.
+- **Real-data run, for the human** (aggregates only; ~10–15 min):
+  `.venv/bin/python tools/loose_run.py --gt evaluation/gt/BAR-ATH_possession_gt_public.csv`.
