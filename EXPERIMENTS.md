@@ -84,7 +84,7 @@ command and what to paste back.
 | E007a | 2026-10-22 | autonomous-mode | Set-piece tags vs our dead-ball edges (measurement) | stop: D already near 86% of set-piece starts (line 0.7); E007b not built |
 | E012 | 2026-10-25 | feat/e012-tag-cue | Smart Tagging phase tags as a team cue where the ball is untracked | stop: gate FAIL, right on only 0.29 / 0.32 of frames where E005c is wrong (line 0.50); code kept, off |
 | E013 | 2026-10-29 | feat/e013-lang-dead-model | Lang et al.'s full recipe (±80 s context, per-team features, 3.64 s median) for the dead/alive classifier | stop: gate 2 FAIL, bal 0.734 < 0.80 vs reference; vs public truth 0.864 (E010 0.784); code kept, off |
-| E014 | 2026-10-29 | feat/e013-lang-dead-model | Dead/alive classifier taught by labels decoded without the slow cue | design fixed; gate not yet run |
+| E014 | 2026-10-29 | feat/e013-lang-dead-model | Dead/alive classifier taught by labels decoded without the slow cue | stop: gate FAIL, 0.527 vs its own teacher, 0.687 vs truth (E013 0.864); refuted |
 
 ## Entry template
 
@@ -1379,3 +1379,24 @@ Fixed before any run (autonomous session):
   readable for the reason logged under E013 (v2 has almost no D; G3).
 - **Real-data gate, for the human** (aggregates only; about 4 minutes):
   `.venv/bin/python tools/dead_model_check.py --recipe lang --teacher no_slow --gt evaluation/gt/BAR-ATH_possession_gt_public.csv`.
+- **Real data, gate (human-run 2026-10-29; aggregates only):**
+
+  | set | E014 (lang, no_slow): bal / dead\|alive / dead\|dead | E013 (lang, pass1) | decoded E005c | n |
+  |---|---|---|---|---|
+  | (1) hidden, reference alive: dead rate | 0.013 | 0.027 | to_dead 0.141 | 93,535 |
+  | (2) ball seen vs its teacher | **0.527** / 0.011 / 0.065 | 0.734 / 0.030 / 0.498 | — | 91,844 |
+  | (2) ball seen vs reference (not a gate) | 0.527 / 0.009 / 0.062 | (same as above) | — | 91,844 |
+  | (3) ball untracked vs reference | 0.515 / 0.031 / 0.060 | 0.820 / 0.013 / 0.654 | — | 64,079 |
+  | (4) public truth, ball untracked | **0.687** / 0.000 / 0.374 | 0.864 / 0.000 / 0.729 | 0.871 / 0.000 / 0.743 | 885 |
+
+  Teacher D share on ball-seen decoded frames 0.054 (reference 0.094). Not a gate: right where
+  decoded E005c is wrong 0.354 (n 127). Gate 1 PASS, gate 2 **FAIL**, gate 3 **FAIL** →
+  **E014a gate FAIL**.
+- **Decision: stop**; E014b not built; `gap_dead_teacher = "pass1"` stays, code kept, unused.
+- **Reading:** the hypothesis is refuted, not just unconfirmed. Without the slow cue, the dead
+  labels on seen frames (ball outside, ball lost nearby) are ones player movement cannot predict:
+  the classifier recovers 6.5% of its own teacher's stoppages, and is worse against truth than
+  with the pass-1 teacher (0.687 vs 0.864). So E013's movement signal *was* mostly the slow cue's
+  information, learned back; the teacher was not hiding a better one. Five tries now (E010a/c/d,
+  E013, E014) say the same: a dead/alive reading from player movement alone does not beat the
+  slow cue in gaps. The remaining loss is where slow play and a stoppage look alike to movement.
