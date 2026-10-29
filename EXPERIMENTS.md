@@ -85,7 +85,7 @@ command and what to paste back.
 | E012 | 2026-10-25 | feat/e012-tag-cue | Smart Tagging phase tags as a team cue where the ball is untracked | stop: gate FAIL, right on only 0.29 / 0.32 of frames where E005c is wrong (line 0.50); code kept, off |
 | E013 | 2026-10-29 | feat/e013-lang-dead-model | Lang et al.'s full recipe (±80 s context, per-team features, 3.64 s median) for the dead/alive classifier | stop: gate 2 FAIL, bal 0.734 < 0.80 vs reference; vs public truth 0.864 (E010 0.784); code kept, off |
 | E014 | 2026-10-29 | feat/e013-lang-dead-model | Dead/alive classifier taught by labels decoded without the slow cue | stop: gate FAIL, 0.527 vs its own teacher, 0.687 vs truth (E013 0.864); refuted |
-| E015 | 2026-10-29 | feat/e013-lang-dead-model | E013's classifier in E010d's form: confident-alive beside the slow cue, gaps only | design fixed; not yet run |
+| E015 | 2026-10-29 | feat/e013-lang-dead-model | E013's classifier in E010d's form: confident-alive beside the slow cue, gaps only | drop: to_dead 0.141 -> 0.085 but change recall 0.284 -> 0.176; side changes in gaps go through D |
 
 ## Entry template
 
@@ -1437,3 +1437,23 @@ Fixed before any run (autonomous session):
   see E013, G3). Tests: the rates are rounded and clamped, and config stays off.
 - **Real-data run, for the human** (aggregates only; ~10–15 min):
   `.venv/bin/python tools/gap_alive_run.py --gt evaluation/gt/BAR-ATH_possession_gt_public.csv`.
+- **Real data** (human-run 2026-10-29; aggregates only):
+
+  | | E005c (off) | E010d (e010 classifier) | E015 (lang classifier) | criterion |
+  |---|---|---|---|---|
+  | rates: sure alive \| alive / \| dead | — | 0.97 / 0.30 | 0.98 / 0.31 (n 17,317 / 46,762) | measured |
+  | masked `to_dead` | 0.141 ± 0.025 | 0.100 ± 0.010 | **0.085 ± 0.011** | ≤ 0.111 ✓ |
+  | masked `change_recall` | 0.284 ± 0.044 | 0.249 ± 0.077 | **0.176 ± 0.036** | ≥ 0.264 ✗ |
+  | masked wrong_side / agreement | 0.161 / 0.700 | 0.161 / 0.739 | 0.174 / 0.742 | — |
+  | D share / possessions / mean | 35.4% / 308 / 13.3 s | 34.4% / 305 / 13.7 s | 34.1% / 306 / 13.7 s | ✓ |
+  | truth untracked D called D | 0.743 | 0.723 | 0.741 (n 494) | ≥ 0.643 ✓ |
+
+- **Decision: drop** (criterion 1 fails on change recall); `gap_alive_alive = None` stays.
+- **Reading, the main finding of E010–E015:** the better the classifier keeps hidden in-play
+  frames alive, the more side changes in gaps are lost: `to_dead` 0.141 → 0.100 → 0.085 goes with
+  `change_recall` 0.284 → 0.249 → 0.176 (E010c: 0.045 with 0.209). Stoppages are untouched (D
+  share and truth floor hold). So the decoder finds most side changes inside gaps *through* D: a
+  turnover in a gap costs one full switch H→A, while H→D→A is cheap whenever the gap already looks
+  half-dead (ball missing, slow play). Every alive cue removes that path. **The dead-ball loss
+  cannot be fixed by evidence alone; the decoder needs another way to change sides in a gap.**
+  That is the next experiment (E016), not another dead/alive cue.
