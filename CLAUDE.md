@@ -178,12 +178,11 @@ python starter/baseline.py                            # rebuild baselines (needs
 
 ## Current status (update at the end of every session)
 
-Last updated: 2026-10-29. Deadline 17 November 2026: 19 days left.
-**Submission = E005c (not yet submitted). Technical document: `hack_mavericks.md`.** On 2026-10-29
-the human lifted the 31 Oct hard stop: experiments continue on separate branches until one passes
-its criterion; main stays E005c until then. Final freeze ~7 Nov. `autonomous-mode` is merged
-(PR #33). Work in progress: branch `feat/e013-lang-dead-model` (E013–E017, pushed, no PR yet;
-based on `feat/e012-tag-cue`, PR #35).
+Last updated: 2026-11-06. Deadline 17 November 2026: 11 days left.
+**MODEL FROZEN at E005c (2026-11-06).** E017 (last experiment) dropped by its pre-set criteria;
+no model changes from here. Submission = E005c (not yet submitted). Technical document:
+`hack_mavericks.md`. Branch `feat/e013-lang-dead-model` (E013–E017 logged, every new option off)
+goes to main through a PR once the human confirms `make submission` on it gives `a8ee1b28…`.
 
 - **Submitted CSV:** E005c. `submissions/hack_mavericks.csv`, sha256 `a8ee1b28…`: 308 possessions,
   mean 13.3 s, D 35.4% of graded frames, home share 0.594. Public window (correctness only):
@@ -220,9 +219,10 @@ based on `feat/e012-tag-cue`, PR #35).
   team-neutral state, so every alive cue cost recall. E016 drop, but the breakthrough: a 4-state
   decoder with a "loose ball" state L (alive, team-neutral, 1 s); E016b (L + E015 cue) gave
   to_dead 0.090 with recall 0.278, failing only on possessions 223 < 250 because every turnover
-  was routed through L (switch cost 6.06 → 9.97). **E017 built, not yet run:** L as an extra
-  route with the direct switch kept (`decoder.loose_keep_switch`), E016's criteria unchanged.
-  All new options off (`loose_s = None`, `gap_dead_recipe = "e010"`, `gap_dead_teacher = "pass1"`).
+  was routed through L (switch cost 6.06 → 9.97). 2026-11-06: E017 drop (L as an extra route,
+  direct switch kept): possessions back to 303 and E017b to_dead 0.079, but change recall 0.236 <
+  0.264 (E017a 0.224 < 0.314). Next idea, not to be run (freeze): L's entry cheaper only inside
+  gaps. All new options off (`loose_s = None`, `gap_dead_recipe = "e010"`, `gap_dead_teacher = "pass1"`).
 - **Tools the human runs** (print aggregates only, safe to paste back): `tools/inspect_cues.py`,
   `tools/masked_harness.py --gt …`, `tools/team_model_check.py --gt …`,
   `tools/inspect_touches.py --gt … [--cue touch]`, `tools/dead_model_check.py --gt …`,
@@ -248,40 +248,20 @@ based on `feat/e012-tag-cue`, PR #35).
 
 ### Next session: start here
 
-**Human, first thing:** say "continue". Claude then asks you to run E017 (~10–15 min, on branch
-`feat/e013-lang-dead-model`):
+The model is frozen; only submission work remains.
 
-```bash
-git checkout feat/e013-lang-dead-model && git pull
-.venv/bin/python tools/loose_run.py --keep-switch --gt evaluation/gt/BAR-ATH_possession_gt_public.csv
-```
-
-and paste back the whole output (aggregates only).
-
-**Claude, at the start of the next session:** read this status and the end of EXPERIMENTS.md
-(E013–E017); check `config.py` has `control_acc = None`, `gap_acc_strong = 0.86`,
-`loose_s = None`, `loose_keep_switch = False`; give the human the command above. Then:
-- **E017b KEEP** (to_dead ≤ 0.111, change recall ≥ 0.264, D share 31–45%, possessions 250–400,
-  mean 10–20 s, truth floor ≥ 0.643): log it, then a separate PR that switches it on (decoder
-  `loose_s = 1.0`, `loose_keep_switch = True`; evidence `gap_alive_alive = 0.98`,
-  `gap_alive_dead = 0.31`, `gap_dead_recipe = "lang"`); the human runs `make reproduce` and
-  `make submission` (new sha), public-window check (correctness only), then `hack_mavericks.md`.
-- **E017b DROP:** log it with the table; if recall collapsed (L rarely used), the next design is
-  L's entry made cheaper only inside ball gaps; if possessions still fell, look at L's split
-  rule. Propose the design for the human's OK before code, values fixed before the run.
-- E017a (L alone) is judged separately; it can pass or fail independently.
-
-**Other candidates, after E017:** G3 (fix synthetic stoppage speeds, then re-run G2's table);
-E011 detector-accuracy gate (Diing); E008 Metrica sample-data harness.
-
-**Human, to submit (when the model is settled):**
-1. Merge PR #35 (E012, cue off) and, if E017 is kept, its PRs. On main: `make reproduce`
-   (expect `byte-identical: OK`) and `make submission` (expect sha256 `a8ee1b28…` for E005c).
-2. Make the repo public; `git status` must show no data files.
-3. Google Form: upload `submissions/hack_mavericks.csv` (as `hack_mavericks.csv`) and
-   `hack_mavericks.md`, plus the public repo URL. Validate the exact file you upload.
-4. Repo hygiene when convenient: delete merged branches, including
+**Human:**
+1. On `feat/e013-lang-dead-model`: `make submission` must print sha256 `a8ee1b28…` (proves every
+   E013–E017 option is off). Then merge its PR into main.
+2. On main: `make reproduce` (expect `byte-identical: OK`) and `make submission` (expect
+   `a8ee1b28…`), then `.venv/bin/python evaluation/validate_submission.py submissions/hack_mavericks.csv`.
+3. Make the repo public; `git status` must show no data files.
+4. Google Form (aim ~10 Nov): upload `submissions/hack_mavericks.csv` (as `hack_mavericks.csv`)
+   and `hack_mavericks.md`, plus the public repo URL. Validate the exact file you upload.
+5. Repo hygiene when convenient: delete merged branches, including
    `revert-29-feat/e009b-control-cue`.
+
+**Claude:** no new experiments. Help only with the document, the PR and submission problems.
 
 **Deliverables, with dates:**
 - by ~7 Nov: model freeze; after it, no model changes.

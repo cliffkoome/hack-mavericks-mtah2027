@@ -1550,3 +1550,26 @@ Fixed before any run (autonomous session):
   rates, H→L at the switch rate, stay reduced by the switch rate. Off unchanged (L off reads no
   new key). **Real-data run, for the human** (~10–15 min):
   `.venv/bin/python tools/loose_run.py --keep-switch --gt evaluation/gt/BAR-ATH_possession_gt_public.csv`.
+- **Real data** (human-run 2026-11-06; aggregates only):
+
+  | | E005c | E016b (L + cue) | E017a (L, switch kept) | E017b (L + cue, switch kept) |
+  |---|---|---|---|---|
+  | masked `to_dead` | 0.141 | 0.090 ± 0.010 | 0.131 ± 0.018 | **0.079 ± 0.023** |
+  | masked `change_recall` | 0.284 | 0.278 ± 0.035 | **0.224 ± 0.025** | **0.236 ± 0.021** |
+  | masked wrong_side / agreement | 0.161 / 0.700 | 0.148 / 0.761 | 0.166 / 0.706 | 0.161 / 0.758 |
+  | D share | 35.4% | 34.2% | 35.5% | 34.7% |
+  | possessions / mean | 308 / 13.3 s | 223 / 18.8 s | 306 / 13.4 s | 303 / 13.7 s |
+  | home share | 0.594 | 0.605 | 0.604 | 0.604 |
+  | truth untracked D called D | 0.743 | 0.696 | 0.743 | 0.711 |
+  | criterion | — | 1 ✓, 2 ✗, 3 ✓ | 1 ✗, 2 ✓, 3 ✓ | **1 ✗**, 2 ✓, 3 ✓ |
+
+- **Decision: drop both** (pre-set criteria); `loose_s = None`, `loose_keep_switch = False` stay.
+- **Reading:** the logged risk came true. Keeping the direct switch restored the possession count
+  (223 → 303) and E017b has the lowest `to_dead` of any variant (0.079), but side-change recall in
+  gaps fell below E005c's (0.236 vs 0.284, limit 0.264): with the direct switch available, the
+  decoder rarely pays for the H→L→A route, so the alive cue again blocks the D route that gap side
+  changes took. E016b and E017b sit on either side of the target: L as the only route keeps recall
+  but costs possessions everywhere; L as an extra route keeps possessions but loses recall. A
+  middle design (L's entry made cheaper only inside ball gaps) is the next idea, but it would be a
+  new value chosen after seeing this table and there is no time to run it before the 7 Nov freeze.
+- **Model freeze (2026-11-06):** the submission stays E005c. No model experiments after this one.
