@@ -4,15 +4,20 @@
     python tools/dead_model_check.py --data-dir .synthetic/eval/full-seed0 \
         --gt .synthetic/eval/full-seed0/synthetic_possession_gt.csv
 
+    python tools/dead_model_check.py --recipe lang --gt …   # E013a: Lang et al.'s recipe
+    python tools/dead_model_check.py --recipe lang --teacher no_slow --gt …   # E014a
+
 Every decoded frame is predicted by a model fitted on the other half (possession/dead_model.py).
 Rows (each: balanced accuracy, P(says dead | alive), P(says dead | dead), n):
 
   (1) E005a's hidden frames (5 seeds pooled; all reference-alive): the masked decoder's dead rate
       there vs the classifier's -- gate 1
-  (2) ball-seen frames vs the reference labels -- gate 2; these rates feed E010b's cue
+  (2) ball-seen frames vs the labels the classifier learned from (the teacher) -- gate 2; with
+      --teacher no_slow (E014) the same rates vs the reference are printed beside it
   (3) ball-untracked frames vs the reference labels
   (4) --gt only: graded truth frames with the ball untracked, the classifier and the decoded
-      reference vs the truth -- gate 3
+      reference vs the truth -- gate 3; and, for reading only (E012's lesson), on the frames
+      where the decoded reference is wrong dead/alive, the share the classifier gets right
 
 The slow-players cue alone is shown beside the classifier as the thing it would replace.
 Everything printed is a rate or a count over many frames. Safe to paste back.
@@ -28,6 +33,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
 from config import PARAMS  # noqa: E402
+import copy  # noqa: E402
+
 from possession import D, X, atd, dead_model, features, masking, pipeline  # noqa: E402
 from possession import spec as spec_module  # noqa: E402
 import possession_metrics as pm  # noqa: E402
@@ -56,13 +63,20 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--data-dir")
     parser.add_argument("--gt")
+    parser.add_argument("--recipe", choices=dead_model.RECIPES,
+                        default=PARAMS["evidence"]["gap_dead_recipe"])
+    parser.add_argument("--teacher", choices=pipeline.TEACHERS,
+                        default=PARAMS["evidence"]["gap_dead_teacher"])
     args = parser.parse_args()
 
     spec = spec_module.load(args.data_dir)
     tracking = atd.load(spec, args.data_dir)
     ev = PARAMS["evidence"]
     reference = pipeline.label(tracking, spec, PARAMS)
-    p_dead, _ = dead_model.cross_half(tracking, spec, reference)
+    params = copy.deepcopy(PARAMS)
+    params["evidence"]["gap_dead_teacher"] = args.teacher
+    teacher = pipeline.dead_teacher(tracking, spec, params, reference)
+    p_dead, _ = dead_model.cross_half(tracking, spec, teacher, recipe=args.recipe)
     says = np.where(np.isnan(p_dead), np.nan, p_dead >= 0.5)
     walking = features.players_median_speed(tracking, spec.fps)
     slow = np.where(np.isnan(walking), np.nan, walking < ev["slow_speed"])
@@ -71,7 +85,8 @@ def main():
     ref_dead = reference == D
     has = ~np.isnan(p_dead)
 
-    print("E010a dead-model check, model {}".format(PARAMS["model"]))
+    print("dead-model check (E010a gate), model {}, recipe {}, teacher {}".format(
+        PARAMS["model"], args.recipe, args.teacher))
     print("(1) hidden frames, reference alive (5 seeds pooled)")
     masked_dead, model_dead, n = [], [], 0
     for seed in SEEDS:
@@ -86,9 +101,15 @@ def main():
           .format(np.mean(masked_dead), np.mean(model_dead), n))
     print("  gate 1 (classifier <= half the decoder): {}".format("PASS" if gate_1 else "FAIL"))
 
-    print("(2) ball-seen frames vs reference")
-    seen = rates(says, ref_dead, decoded & visible & has)
+    print("(2) ball-seen frames vs the teacher")
+    teacher_dead = teacher == D
+    if args.teacher != "pass1":
+        print("  teacher D share on ball-seen decoded frames {:.3f} (reference {:.3f})".format(
+            teacher_dead[decoded & visible].mean(), ref_dead[decoded & visible].mean()))
+    seen = rates(says, teacher_dead, decoded & visible & has)
     line("classifier", seen)
+    if args.teacher != "pass1":
+        line("classifier vs reference (not a gate)", rates(says, ref_dead, decoded & visible & has))
     line("slow cue", rates(slow, ref_dead, decoded & visible & ~np.isnan(slow)))
     gate_2 = seen[0] >= GATE_2
     print("  gate 2 (balanced >= {:.2f}): {}".format(GATE_2, "PASS" if gate_2 else "FAIL"))
@@ -108,6 +129,10 @@ def main():
         line("classifier", model)
         line("decoded reference (E005c)", decoded_rates)
         line("slow cue", rates(slow, truth_dead, where & ~np.isnan(slow)))
+        wrong = where & (ref_dead != truth_dead)
+        right = np.mean(says[wrong].astype(bool) == truth_dead[wrong]) if wrong.any() else np.nan
+        print("  not a gate: classifier right where decoded is wrong {:.3f}  n {}".format(
+            right, int(wrong.sum())))
         gate_3 = model[0] >= decoded_rates[0] - GATE_3_MARGIN
         print("  gate 3 (classifier >= decoded - {:.2f}): {}".format(
             GATE_3_MARGIN, "PASS" if gate_3 else "FAIL"))

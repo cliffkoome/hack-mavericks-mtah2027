@@ -83,6 +83,11 @@ command and what to paste back.
 | E010d | 2026-10-22 | autonomous-mode | Classifier's confident-alive call beside the slow cue | drop (narrow): to_dead 0.141 -> 0.100, D share 34.4%, but change recall 0.284 -> 0.249 (limit -0.02) |
 | E007a | 2026-10-22 | autonomous-mode | Set-piece tags vs our dead-ball edges (measurement) | stop: D already near 86% of set-piece starts (line 0.7); E007b not built |
 | E012 | 2026-10-25 | feat/e012-tag-cue | Smart Tagging phase tags as a team cue where the ball is untracked | stop: gate FAIL, right on only 0.29 / 0.32 of frames where E005c is wrong (line 0.50); code kept, off |
+| E013 | 2026-10-29 | feat/e013-lang-dead-model | Lang et al.'s full recipe (±80 s context, per-team features, 3.64 s median) for the dead/alive classifier | stop: gate 2 FAIL, bal 0.734 < 0.80 vs reference; vs public truth 0.864 (E010 0.784); code kept, off |
+| E014 | 2026-10-29 | feat/e013-lang-dead-model | Dead/alive classifier taught by labels decoded without the slow cue | stop: gate FAIL, 0.527 vs its own teacher, 0.687 vs truth (E013 0.864); refuted |
+| E015 | 2026-10-29 | feat/e013-lang-dead-model | E013's classifier in E010d's form: confident-alive beside the slow cue, gaps only | drop: to_dead 0.141 -> 0.085 but change recall 0.284 -> 0.176; side changes in gaps go through D |
+| E016 | 2026-10-29 | feat/e013-lang-dead-model | Loose-ball decoder state L (alive, team-neutral, ~1 s) for side changes in gaps; alone and with E015's cue | drop both: E016b to_dead 0.090 with recall 0.278 (trade-off solved) but possessions 223 < 250 (every switch dearer) |
+| E017 | 2026-10-29 | feat/e013-lang-dead-model | Loose-ball state as an extra route, direct switch kept; alone and with E015's cue | design fixed; not yet run |
 
 ## Entry template
 
@@ -1237,3 +1242,334 @@ Fixed before any run (autonomous session):
   the unsure-only fallback would not help either. Code kept, cue off (`tag_acc_* = None`); no
   criterion run. **Lesson:** check (3), right-where-we-are-wrong, is the cheap test that a second
   cue carries new information; plain agreement (2) passed for attacking and would have misled.
+
+### E013 — Lang et al.'s full recipe for the dead/alive classifier
+
+- **Date / author / commit:** 2026-10-29, Hack Mavericks, `feat/e013-lang-dead-model`. Design
+  written here before any code. Freeze: the human lifted the 31 Oct hard stop for experiments on
+  separate branches; main stays E005c until a criterion passes.
+- **Why now:** the prior-art review (`docs/research/possession-prior-art.md`) singles out Lang et
+  al. 2022 (Sci Rep, DOI 10.1038/s41598-022-19948-1) as the published fix for the loss E010
+  diagnosed: slow play with the ball unseen called dead (masked `to_dead` 0.141; slow cue firing
+  on 0.883 of those frames). E010a borrowed Lang's idea only in part and failed its gate (balanced
+  accuracy 0.754 on ball-seen frames, line 0.80). It differs from the paper in three ways, and the
+  paper reports 92% frame accuracy with all three:
+  1. **context:** E010 looks at most ±8 s away; Lang uses ±0.4, 0.8, 2, 4, 20, 40, 80 s. The
+     long offsets are what separate a stoppage (the regrouping before a restart, the burst after
+     it) from a slow build-up, which looks the same within a few seconds;
+  2. **per-team features:** E010 pools all players' speeds and spread; Lang feeds each team
+     separately, positions and accelerations included, with home and away swapped as data
+     augmentation;
+  3. **smoothing:** Lang median-filters the frame predictions over 3.64 s (91 frames).
+- **Hypothesis:** with the full recipe, the classifier passes E010a's gate, which E010's partial
+  version did not; then, in E010c's form, it lowers `to_dead` *without* the missed stoppages that
+  sank E010c (D share 26.8%, change recall 0.209).
+- **One change:** the classifier's recipe (`dead_model.py`, `recipe="lang"`). E010's recipe stays
+  bit-for-bit as it is. Training set, labels (pass-1 reference on ball-seen frames), half-to-half
+  folds, every-5th-frame subsampling, model (HistGradientBoosting, library defaults, seed 0,
+  single-threaded) are E010's, so the recipe is the only difference.
+- **Recipe, all values fixed now from the paper or from existing code, none from a result:**
+  - offsets: 0, ±0.4, ±0.8, ±2, ±4, ±20, ±40, ±80 s (Lang, as published);
+  - features per frame: E010's eight over all players, plus per team (H, A; slots from the
+    metadata) seven: centroid x in attack-normalised coordinates (`team_model.attack_sign`),
+    centroid y, std x, std y, speed p50, speed p90, mean |acceleration| (from the speed's change
+    over ±0.2 s, `team_model.VELOCITY_S`). Each smoothed over ±0.5 s as in E010. Positions in
+    attack-normalised x so a team's shape means the same thing in both halves;
+  - augmentation: each training example also with H and A exchanged; predictions averaged with
+    the swapped prediction (as `team_model`), so no home prior is learned;
+  - smoothing: centred median filter of 91 frames (3.64 s at 25 fps, Lang) on P(dead), within
+    each predicted half's decoded frames.
+- **E013a gate = E010a's gate, same lines, same tool** (`tools/dead_model_check.py --recipe lang`):
+  1. hidden in-play frames (5 seeds): classifier dead rate ≤ half the masked decoder's `to_dead`;
+  2. ball-seen frames vs reference, cross-half: balanced accuracy ≥ **0.80**;
+  3. public truth, ball untracked: balanced accuracy ≥ decoded E005c's − 0.02.
+
+  Also printed, not a gate (the E012 lesson, for reading only): on public-truth untracked frames
+  where decoded E005c is wrong dead/alive, the share the classifier gets right.
+- **E013b, only if the gate passes:** E010c's form exactly: on untracked frames the classifier's
+  call (`p_dead ≥ 0.5`) replaces the slow cue, with its rates from gate row (3) used as measured
+  (`gap_dead_alive`, `gap_dead_dead`; `gap_dead_recipe = "lang"`). **Keep criterion = E010c's
+  three, unchanged:** masked `to_dead` ≤ 0.111 with `change_recall` ≥ 0.264; D share 31–45%,
+  possessions 250–400, mean 10–20 s; public-truth untracked D frames called D ≥ 0.643.
+- **Synthetic (correctness only):** `recipe="e010"` gives E010's p_dead exactly; off gives
+  E005c's labels exactly; the lang recipe runs on full synthetic seeds 0–2 and its variant is
+  reported beside E010c's, never used to choose.
+- **Risk, written before the run:** the classifier still learns from pass-1 labels, which the
+  slow cue helped make; if the teacher's errors are the limit, no recipe passes gate 2 and E013
+  stops there. That would itself be the finding: the next fix is the label source, not features.
+- **Synthetic (2026-10-29, correctness only).** Tests: 154 pass, including "e010" is the default
+  and gives E010's P(dead) exactly, the lang recipe never trains on the half it predicts, is
+  deterministic, gives the same prediction with H and A exchanged, and its output is exactly the
+  91-frame median of the raw prediction. With the cue off nothing reads the classifier, so labels
+  are E005c's. The gate tool runs with both recipes on full-seed0 (e010 132 s, lang 168 s).
+  **Its numbers there are not readable, and this is a generator finding, not an E013 one:** on
+  v2 the decoded reference calls D on 1.1% of decoded frames where the truth has 28.1% (truth
+  D frames called D: 0.039), so there are almost no dead labels to learn from (both recipes:
+  balanced accuracy 0.52–0.61 vs reference). Likely cause: v2 caps players at
+  `DEAD_PLAYER_SPEED = 1.5` m/s at a stoppage, above the slow cue's 1.25 m/s line, so the slow
+  cue hardly fires (0.004 of reference-dead seen frames), while on real data the median is below
+  1.25 on 62% of dead frames (E003). This probably also explains G2's open question (hmm macroF1
+  0.54 vs the vote's 0.63). `synthetic_eval.py` was not run for E013: with D almost absent its
+  dead-ball variants say nothing. Follow-up **G3**: make v2's stoppage speeds match E003's
+  measured share, then re-run G2's table. Not part of E013 (one change per experiment).
+- **Real-data gate, for the human** (aggregates only; about 3 minutes):
+  `.venv/bin/python tools/dead_model_check.py --recipe lang --gt evaluation/gt/BAR-ATH_possession_gt_public.csv`.
+  Paste back the whole output. Gate lines as fixed above; if it passes, E013b is run next with
+  the rates from row (3), as written.
+- **Real data, gate (human-run 2026-10-29; aggregates only), E010's recipe beside it:**
+
+  | set | lang: bal / dead\|alive / dead\|dead | E010 (E010a) | decoded E005c | n |
+  |---|---|---|---|---|
+  | (1) hidden, reference alive: dead rate | 0.027 | 0.022 | to_dead 0.141 | 93,535 |
+  | (2) ball seen vs reference | **0.734** / 0.030 / 0.498 | 0.754 / 0.028 / 0.535 | — | 91,844 |
+  | (3) ball untracked vs reference | 0.820 / 0.013 / 0.654 | 0.811 / 0.021 / 0.643 | — | 64,079 |
+  | (4) public truth, ball untracked | 0.864 / 0.000 / 0.729 | 0.784 / 0.000 / 0.569 | 0.871 / 0.000 / 0.743 | 885 |
+
+  Not a gate: on the 127 public-truth untracked frames where decoded E005c is wrong dead/alive,
+  the lang classifier is right on 0.630. Gate 1 PASS, gate 2 **FAIL** (0.734 < 0.80), gate 3
+  PASS (0.864 ≥ 0.851) → **E013a gate FAIL**.
+- **Decision: stop** by the pre-set gate; E013b not built; `gap_dead_recipe = "e010"` stays and
+  the code is kept, unused. No line was moved after seeing the result.
+- **Reading:** the long context and per-team features did what the paper says *against truth*
+  (row 4: 0.784 → 0.864, now level with the decoder, and right on most of the frames the decoder
+  gets wrong: small n, not a selector), but not against our reference (row 2: no gain, it still
+  misses half the reference stoppages on seen frames). That is the risk written before the run:
+  the classifier is limited by its teacher. Its labels come from the pass-1 decoder, which the
+  slow cue helped make, and gate 2 scores it against those same labels, so a classifier that
+  disagrees with the slow cue's false alarms is marked wrong twice. **Next fix is the label
+  source, not the features** (E014: a teacher built without the slow cue).
+
+### E014 — A teacher without the slow cue for the dead/alive classifier
+
+- **Date / author / commit:** 2026-10-29, Hack Mavericks, `feat/e013-lang-dead-model` (follows
+  E013 on the same branch). Chosen by the human from three options after E013's gate; design
+  written here before any code.
+- **Hypothesis:** E013's classifier is limited by its labels, not its features. It learns from
+  pass-1 labels the slow-players cue helped make, so it partly copies that cue, including its
+  false alarms in slow play (the loss E010 diagnosed). Trained instead on labels decoded *without*
+  the slow cue, it learns dead/alive from the ball evidence on seen frames (ball outside, still,
+  missing around it, nearest player), which the player-movement features can then generalise into
+  the gaps. E013's truth row (0.864, level with the decoder) says the features are good enough.
+- **One change:** the teacher. `gap_dead_teacher`: `"pass1"` (E010/E013: the pass-1 labels) or
+  `"no_slow"`: pass 1 decoded with `slow_speed = None`, everything else as config (E001's cues),
+  finalised by the same rules. Recipe `"lang"` (E013) as built; training frames (ball seen),
+  folds, subsampling and model unchanged. The pass-1 labels still train the gap team classifier
+  (E005c), untouched.
+- **Known trade:** without the slow cue, pass 1 over-calls D in gaps (E001: D share 45.3%). The
+  classifier trains on ball-seen frames only, where the ball cues decide, so this should not reach
+  its labels much; gate 2 below reports the teacher's D share on its training frames to show it.
+- **E014a gate (`tools/dead_model_check.py --recipe lang --teacher no_slow`), lines as E010a:**
+  1. hidden in-play frames (5 seeds): classifier dead rate ≤ half the masked decoder's `to_dead`
+     (decoder = E005c, unchanged);
+  2. ball-seen frames, cross-half, vs **the teacher it trained on**: balanced accuracy ≥ **0.80**
+     (can it learn dead/alive from movement at all, with labels not made from movement). The
+     same rates vs the E005c reference are printed beside it, not a gate;
+  3. public truth, ball untracked: balanced accuracy ≥ decoded E005c's − 0.02.
+
+  Printed, not a gate (n ≈ 127, too small to decide): right where decoded E005c is wrong.
+- **E014b, only if the gate passes:** E010c's form exactly (classifier call replaces the slow
+  cue on untracked frames; rates from gate row (3) **vs the E005c reference** used as measured,
+  since that is what the decoder's other cues are calibrated to). **Keep criterion = E010c's,
+  unchanged:** masked `to_dead` ≤ 0.111 with `change_recall` ≥ 0.264; D share 31–45%,
+  possessions 250–400, mean 10–20 s; public-truth untracked D frames called D ≥ 0.643.
+- **Risk:** without the slow cue, D on seen frames comes mostly from "ball missing nearby" and
+  "ball outside"; if those mark too few stoppages, the classifier sees few dead examples and
+  under-calls D (E010c's failure). Criterion 2's D-share floor catches it.
+- **Synthetic (2026-10-29, correctness only):** 155 tests pass, including: the default teacher
+  returns the pass-1 labels unchanged, and `"no_slow"` equals pass 1 decoded with
+  `slow_speed = None`, finalised. With the cue off nothing reads the teacher, so labels are
+  E005c's. The gate tool runs with `--teacher no_slow` on full-seed0; its numbers there are not
+  readable for the reason logged under E013 (v2 has almost no D; G3).
+- **Real-data gate, for the human** (aggregates only; about 4 minutes):
+  `.venv/bin/python tools/dead_model_check.py --recipe lang --teacher no_slow --gt evaluation/gt/BAR-ATH_possession_gt_public.csv`.
+- **Real data, gate (human-run 2026-10-29; aggregates only):**
+
+  | set | E014 (lang, no_slow): bal / dead\|alive / dead\|dead | E013 (lang, pass1) | decoded E005c | n |
+  |---|---|---|---|---|
+  | (1) hidden, reference alive: dead rate | 0.013 | 0.027 | to_dead 0.141 | 93,535 |
+  | (2) ball seen vs its teacher | **0.527** / 0.011 / 0.065 | 0.734 / 0.030 / 0.498 | — | 91,844 |
+  | (2) ball seen vs reference (not a gate) | 0.527 / 0.009 / 0.062 | (same as above) | — | 91,844 |
+  | (3) ball untracked vs reference | 0.515 / 0.031 / 0.060 | 0.820 / 0.013 / 0.654 | — | 64,079 |
+  | (4) public truth, ball untracked | **0.687** / 0.000 / 0.374 | 0.864 / 0.000 / 0.729 | 0.871 / 0.000 / 0.743 | 885 |
+
+  Teacher D share on ball-seen decoded frames 0.054 (reference 0.094). Not a gate: right where
+  decoded E005c is wrong 0.354 (n 127). Gate 1 PASS, gate 2 **FAIL**, gate 3 **FAIL** →
+  **E014a gate FAIL**.
+- **Decision: stop**; E014b not built; `gap_dead_teacher = "pass1"` stays, code kept, unused.
+- **Reading:** the hypothesis is refuted, not just unconfirmed. Without the slow cue, the dead
+  labels on seen frames (ball outside, ball lost nearby) are ones player movement cannot predict:
+  the classifier recovers 6.5% of its own teacher's stoppages, and is worse against truth than
+  with the pass-1 teacher (0.687 vs 0.864). So E013's movement signal *was* mostly the slow cue's
+  information, learned back; the teacher was not hiding a better one. Five tries now (E010a/c/d,
+  E013, E014) say the same: a dead/alive reading from player movement alone does not beat the
+  slow cue in gaps. The remaining loss is where slow play and a stoppage look alike to movement.
+
+### E015 — E013's classifier in E010d's form (confident "alive" beside the slow cue)
+
+- **Date / author / commit:** 2026-10-29, Hack Mavericks, `feat/e013-lang-dead-model`. Chosen by
+  the human after E014; design written here before any code.
+- **Why this is a new experiment, not a rescue of E013's gate:** the same step E010d took after
+  E010a's gate failed. The gate asks whether the classifier replaces the decoder's dead/alive
+  reading; E010d showed a narrower use comes closest: keep the slow cue (and its stoppage recall)
+  and only *add* the classifier's confident "alive" call in gaps. E010d missed by 0.015 on change
+  recall (0.249 vs 0.264, seed spread ± 0.077). E013's classifier is the better reader against
+  truth on untracked frames (0.864 vs E010's 0.784, row 4), so the same form with it is the test.
+- **One change from E010d:** the classifier's recipe, `"e010"` → `"lang"` (teacher `"pass1"`).
+  Everything else is E010d's: on untracked frames, beside the slow cue, the yes/no cue
+  "confidently alive" = `p_dead ≤ 0.3`; ball-seen frames unchanged.
+- **Value rule (E010d's, automated so no value is chosen by hand):** P(confidently alive | alive)
+  and P(confidently alive | dead), measured on decoded ball-untracked frames against the pass-1
+  labels the classifier trains on, rounded to 2 decimals, wired in as `gap_alive_alive` /
+  `gap_alive_dead`. `tools/gap_alive_run.py` measures them and runs the criterion with them in
+  the same invocation. Guard, added before any real run after a synthetic smoke run hit it: each
+  rounded rate is kept in [0.01, 0.99], since a rate of 0 or 1 makes the cue an infinite veto
+  (log 0). E010d's measured rates (0.97, 0.30) are inside it, so it changes nothing there.
+- **Known compromise (E010d's):** two movement cues on one frame are correlated, so their combined
+  evidence is overstated; the D-share and truth floors catch the failure that would cause.
+- **Keep criterion = E010d's (= E010c's), unchanged; all must hold:**
+  1. masked harness (5 seeds) vs the unmasked reference of the same config: `to_dead` ≤ 0.111
+     and `change_recall` ≥ 0.264 (E005c: 0.141, 0.284);
+  2. full match: D share of graded frames 31–45%, possessions 250–400, mean 10–20 s;
+  3. public truth frames with the ball untracked: truth-D frames called D ≥ 0.643.
+- **On keep:** config switched on in a separate PR the human approves, then `make reproduce`,
+  `hack_mavericks.md` and the status. **On drop:** logged, cue off, main stays E005c.
+- **Synthetic smoke run (2026-10-29, full-seed0, correctness only):** the tool runs end to end in
+  ~10 min. Its rates there hit the edge the guard now covers (P(sure alive | dead) 1.000 on only
+  468 pass-1 dead untracked frames). The criterion numbers are not readable (v2 has almost no D;
+  see E013, G3). Tests: the rates are rounded and clamped, and config stays off.
+- **Real-data run, for the human** (aggregates only; ~10–15 min):
+  `.venv/bin/python tools/gap_alive_run.py --gt evaluation/gt/BAR-ATH_possession_gt_public.csv`.
+- **Real data** (human-run 2026-10-29; aggregates only):
+
+  | | E005c (off) | E010d (e010 classifier) | E015 (lang classifier) | criterion |
+  |---|---|---|---|---|
+  | rates: sure alive \| alive / \| dead | — | 0.97 / 0.30 | 0.98 / 0.31 (n 17,317 / 46,762) | measured |
+  | masked `to_dead` | 0.141 ± 0.025 | 0.100 ± 0.010 | **0.085 ± 0.011** | ≤ 0.111 ✓ |
+  | masked `change_recall` | 0.284 ± 0.044 | 0.249 ± 0.077 | **0.176 ± 0.036** | ≥ 0.264 ✗ |
+  | masked wrong_side / agreement | 0.161 / 0.700 | 0.161 / 0.739 | 0.174 / 0.742 | — |
+  | D share / possessions / mean | 35.4% / 308 / 13.3 s | 34.4% / 305 / 13.7 s | 34.1% / 306 / 13.7 s | ✓ |
+  | truth untracked D called D | 0.743 | 0.723 | 0.741 (n 494) | ≥ 0.643 ✓ |
+
+- **Decision: drop** (criterion 1 fails on change recall); `gap_alive_alive = None` stays.
+- **Reading, the main finding of E010–E015:** the better the classifier keeps hidden in-play
+  frames alive, the more side changes in gaps are lost: `to_dead` 0.141 → 0.100 → 0.085 goes with
+  `change_recall` 0.284 → 0.249 → 0.176 (E010c: 0.045 with 0.209). Stoppages are untouched (D
+  share and truth floor hold). So the decoder finds most side changes inside gaps *through* D: a
+  turnover in a gap costs one full switch H→A, while H→D→A is cheap whenever the gap already looks
+  half-dead (ball missing, slow play). Every alive cue removes that path. **The dead-ball loss
+  cannot be fixed by evidence alone; the decoder needs another way to change sides in a gap.**
+  That is the next experiment (E016), not another dead/alive cue.
+
+### E016 — A "loose ball" decoder state, so a side change in a gap need not go through D
+
+- **Date / author / commit:** 2026-10-29, Hack Mavericks, `feat/e013-lang-dead-model`. Design
+  approved by the human before code (option "build E016 as designed").
+- **Why:** E010c/d and E015 show the decoder finds side changes inside ball gaps through D. D is
+  the only state neutral on team (log 0.5 on every team cue), and in a gap it is also backed by
+  the missing-ball and slow cues. So when the side is unclear, D absorbs the uncertainty and the
+  side flips on the other side of it. Any alive cue removes that support, and recall falls with
+  it (0.284 → 0.249 → 0.176). The transition costs are not the reason: H→D→A costs 6.91 + 6.62 =
+  13.5 against 6.06 for H→A. What is missing is an **alive state that does not commit to a
+  team**: PathCRF's (KDD 2026) "ball in flight" edge, or a loose ball.
+- **Change (`decoder.py`, `evidence.py`; `decoder.loose_s`, None = off = E005c exactly):**
+  - **State L.** Evidence: the alive column's dead/alive cues (missing, outside, still, slow, gap
+    dead cues), and log 0.5 on every team cue, exactly as D gets it. So L = D's team terms + H's
+    and A's dead/alive terms.
+  - **Transitions.** All turnovers go through L: H→L at E005c's switch rate (H→A becomes 0).
+    L→H and L→A at 1 / (loose_s · fps) / 2 each; no L→D or D→L (a stoppage from a loose ball is
+    rare and goes H/A→D as now). `loose_s = 1.0`: a duel or a ball in flight lasts about a
+    second. H→L→A then costs 6.06 + 3.91 = 9.97: dearer than a direct switch was, cheaper than D.
+  - **Both passes.** It is the decoder, so pass 1 (which trains the gap classifiers) uses it too.
+  - **Output.** L is never written. An L run between H and A is split at its midpoint (first half
+    the side before, rest the side after); between two frames of one side, or next to one side
+    and D or a half's edge, it takes that side; with no side on either end, X (rare; forward-
+    filled by the scorer). The CSV keeps H/A/D/X.
+- **Variants, one tool run (`tools/loose_run.py`), each judged on its own:**
+  - **E016a: L alone.** Keep if all hold: masked `change_recall` ≥ **0.314** (+0.03; a decoder
+    change must clearly help); masked `to_dead` ≤ 0.151; D share 33.4–37.4% (E005c ± 2 points);
+    possessions 250–400, mean 10–20 s; truth untracked D called D ≥ 0.643.
+  - **E016b: L + E015's confident-alive cue** at E015's measured values (0.98 / 0.31, recipe
+    lang, measured under E005c; not re-measured, so no value is chosen after seeing E016a).
+    Keep criterion = E010d's, unchanged: `to_dead` ≤ 0.111 with `change_recall` ≥ 0.264; D share
+    31–45%, possessions 250–400, mean 10–20 s; truth floor ≥ 0.643.
+- **Synthetic (correctness only):** off = E005c's labels exactly; viterbi exact on hand-built
+  4-state inputs; L output resolved by the rules above; synthetic v2's D problem (E013) means its
+  numbers are reported, never read as gains.
+- **On keep:** a separate PR switches it on for the human to approve; then `make reproduce`,
+  `hack_mavericks.md`, status. **On drop:** logged, off.
+- **Synthetic (2026-10-29, full-seed0, correctness only):** 177 tests pass; off gives the previous
+  commit's synthetic CSV byte for byte (same sha256). Tool runs in ~10 min. Warning, logged before
+  the real run: on synthetic, E016a *lowers* masked change recall (0.185 ± 0.003 vs E005c's 0.226
+  on v2) with fewer possessions (254). Routing every turnover through L raises a switch's cost
+  from 6.06 to 9.97 everywhere, and v2 has almost no D (E013), so there is no D route for L to
+  replace: only the dearer switch shows. On real data gaps do go through D, so the trade may run
+  the other way; the design and criterion stay as fixed. If E016a fails on real data with
+  possessions down, this is the first suspect.
+- **Real-data run, for the human** (aggregates only; ~10–15 min):
+  `.venv/bin/python tools/loose_run.py --gt evaluation/gt/BAR-ATH_possession_gt_public.csv`.
+- **Real data** (human-run 2026-10-29; aggregates only):
+
+  | | E005c | E015 (cue, no L) | E016a (L) | E016b (L + cue) |
+  |---|---|---|---|---|
+  | masked `to_dead` | 0.141 | 0.085 | 0.132 ± 0.010 | **0.090 ± 0.010** |
+  | masked `change_recall` | 0.284 | 0.176 | 0.258 ± 0.047 | **0.278 ± 0.035** |
+  | masked wrong_side / agreement | 0.161 / 0.700 | 0.174 / 0.742 | 0.130 / 0.740 | 0.148 / 0.761 |
+  | D share | 35.4% | 34.1% | 35.3% | 34.2% |
+  | possessions / mean | 308 / 13.3 s | 306 / 13.7 s | **225** / 18.3 s | **223** / 18.8 s |
+  | home share | 0.594 | 0.597 | 0.602 | 0.605 |
+  | truth untracked D called D | 0.743 | 0.741 | 0.743 | 0.696 |
+  | criterion | — | drop | 1 ✗, 2 ✗, 3 ✓ | 1 ✓, **2 ✗**, 3 ✓ |
+
+- **Decision: drop both** (pre-set criteria); `loose_s = None` stays.
+- **Reading:** E016b answers E010–E015's question: with a team-neutral alive state, the alive
+  cue no longer costs side changes in gaps (recall 0.176 → 0.278 at `to_dead` 0.090), and
+  wrong-side and agreement improve too. It fails on the suspect logged before the run: routing
+  *every* turnover through L raised a switch's cost from 6.06 to 9.97 on all frames, ball seen or
+  not, so possessions fell 308 → 223. The fix is structural, not a value: keep the direct switch
+  and add L as a second route (E017).
+
+### E017 — The loose-ball state as an extra route, the direct switch kept
+
+- **Date / author / commit:** 2026-10-29, Hack Mavericks, `feat/e013-lang-dead-model`. Follows
+  E016's logged suspect; written before any code. No value is new or chosen on a result.
+- **Change (one, from E016):** the H and A rows of the 4-state matrix keep E005c's direct switch
+  *and* add H→L at the same rate: H → [1 − end − switch, switch, stop, switch] (`decoder.
+  loose_keep_switch = True`). A turnover then costs 6.06 as in E005c; H→L→A costs 9.97 and is
+  taken only where L's team-neutral, alive evidence pays the difference (inside gaps). Staying
+  costs log(1 − end − switch) instead of log(1 − end): 0.0057 instead of 0.0033 nats a frame.
+  `loose_s = 1.0`, the L state's evidence and the output rule are E016's.
+- **Variants and criteria = E016's, unchanged** (`tools/loose_run.py --keep-switch`):
+  E017a (L alone): `change_recall` ≥ 0.314, `to_dead` ≤ 0.151, D share 33.4–37.4%, possessions
+  250–400, mean 10–20 s, truth floor ≥ 0.643. E017b (L + E015's cue at 0.98 / 0.31): `to_dead` ≤
+  0.111 with `change_recall` ≥ 0.264, D share 31–45%, possessions 250–400, mean 10–20 s, truth
+  floor ≥ 0.643.
+- **Risk:** with the direct switch kept, L may rarely be cheaper than D or a direct switch, and
+  E017b falls back towards E015 (recall collapse). The table will show which.
+- **Built (2026-10-29):** `decoder.loose_keep_switch` (False = E016), `tools/loose_run.py
+  --keep-switch`; 179 tests pass, including the 4-state rows: direct switch and H→D at E005c's
+  rates, H→L at the switch rate, stay reduced by the switch rate. Off unchanged (L off reads no
+  new key). **Real-data run, for the human** (~10–15 min):
+  `.venv/bin/python tools/loose_run.py --keep-switch --gt evaluation/gt/BAR-ATH_possession_gt_public.csv`.
+- **Real data** (human-run 2026-11-06; aggregates only):
+
+  | | E005c | E016b (L + cue) | E017a (L, switch kept) | E017b (L + cue, switch kept) |
+  |---|---|---|---|---|
+  | masked `to_dead` | 0.141 | 0.090 ± 0.010 | 0.131 ± 0.018 | **0.079 ± 0.023** |
+  | masked `change_recall` | 0.284 | 0.278 ± 0.035 | **0.224 ± 0.025** | **0.236 ± 0.021** |
+  | masked wrong_side / agreement | 0.161 / 0.700 | 0.148 / 0.761 | 0.166 / 0.706 | 0.161 / 0.758 |
+  | D share | 35.4% | 34.2% | 35.5% | 34.7% |
+  | possessions / mean | 308 / 13.3 s | 223 / 18.8 s | 306 / 13.4 s | 303 / 13.7 s |
+  | home share | 0.594 | 0.605 | 0.604 | 0.604 |
+  | truth untracked D called D | 0.743 | 0.696 | 0.743 | 0.711 |
+  | criterion | — | 1 ✓, 2 ✗, 3 ✓ | 1 ✗, 2 ✓, 3 ✓ | **1 ✗**, 2 ✓, 3 ✓ |
+
+- **Decision: drop both** (pre-set criteria); `loose_s = None`, `loose_keep_switch = False` stay.
+- **Reading:** the logged risk came true. Keeping the direct switch restored the possession count
+  (223 → 303) and E017b has the lowest `to_dead` of any variant (0.079), but side-change recall in
+  gaps fell below E005c's (0.236 vs 0.284, limit 0.264): with the direct switch available, the
+  decoder rarely pays for the H→L→A route, so the alive cue again blocks the D route that gap side
+  changes took. E016b and E017b sit on either side of the target: L as the only route keeps recall
+  but costs possessions everywhere; L as an extra route keeps possessions but loses recall. A
+  middle design (L's entry made cheaper only inside ball gaps) is the next idea, but it would be a
+  new value chosen after seeing this table and there is no time to run it before the 7 Nov freeze.
+- **Model freeze (2026-11-06):** the submission stays E005c. No model experiments after this one.

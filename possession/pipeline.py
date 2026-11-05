@@ -6,6 +6,7 @@ from possession import tagging, touches
 from possession import spec as spec_module
 
 MODELS = ("vote", "hmm")
+TEACHERS = ("pass1", "no_slow")
 
 
 def build(params, data_dir=None):
@@ -42,8 +43,25 @@ def label(tracking, spec, params, tags=None):
 
 def first_pass(tracking, spec, params):
     """Pass-1 decoder codes: the evidence without any of the cues that need labels."""
-    log_emit = evidence.log_emissions(tracking, spec, params["evidence"])
+    log_emit = evidence.log_emissions(tracking, spec, params["evidence"], loose=_loose(params))
     return decoder.decode_match(log_emit, spec, params["decoder"])
+
+
+def _loose(params):
+    """Whether the decoder has the loose-ball state (E016)."""
+    return params["decoder"].get("loose_s") is not None
+
+
+def dead_teacher(tracking, spec, params, labels):
+    """Labels the dead/alive classifier learns from (E014): the finalised pass-1 labels, or with
+    "no_slow" pass 1 decoded again without the slow-players cue."""
+    teacher = params["evidence"]["gap_dead_teacher"]
+    if teacher not in TEACHERS:
+        raise ValueError("unknown teacher {!r}; have {}".format(teacher, TEACHERS))
+    if teacher == "pass1":
+        return labels
+    no_slow = dict(params, evidence=dict(params["evidence"], slow_speed=None))
+    return rules.finalize(first_pass(tracking, spec, no_slow), spec)
 
 
 def _hmm(tracking, spec, params, tags=None):
@@ -68,12 +86,14 @@ def _hmm(tracking, spec, params, tags=None):
     if ev["gap_acc_strong"] is not None:
         p_home, _ = team_model.cross_half(tracking, spec, labels, ev["near_m"])
     if gap_dead:
-        p_dead, _ = dead_model.cross_half(tracking, spec, labels)
+        p_dead, _ = dead_model.cross_half(tracking, spec,
+                                          dead_teacher(tracking, spec, params, labels),
+                                          recipe=ev["gap_dead_recipe"])
     if ev["control_acc"] is not None:
         holder, _ = touches.held(tracking, ev["near_m"])
         frames, sides = touches.controls(holder)
         control = touches.last_touch(spec.n_frames, frames, sides,
                                      features.ball_visible(tracking), labels == D, spec.fps)
     log_emit = evidence.log_emissions(tracking, spec, ev, p_home=p_home, control=control,
-                                      p_dead=p_dead, tag=tag)
+                                      p_dead=p_dead, tag=tag, loose=_loose(params))
     return decoder.decode_match(log_emit, spec, params["decoder"])

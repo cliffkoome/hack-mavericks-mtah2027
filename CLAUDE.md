@@ -178,10 +178,11 @@ python starter/baseline.py                            # rebuild baselines (needs
 
 ## Current status (update at the end of every session)
 
-Last updated: 2026-10-25. Deadline 17 November 2026: 23 days left.
-**Submission = E005c. Technical document: `hack_mavericks.md`.** The freeze was lifted on
-2026-10-25 for E011/E012 only, with a hard stop on 31 Oct; final freeze ~7 Nov. `autonomous-mode`
-is merged (PR #33).
+Last updated: 2026-11-06. Deadline 17 November 2026: 11 days left.
+**MODEL FROZEN at E005c (2026-11-06).** E017 (last experiment) dropped by its pre-set criteria;
+no model changes from here. Submission = E005c (not yet submitted). Technical document:
+`hack_mavericks.md`. Branch `feat/e013-lang-dead-model` (E013–E017 logged, every new option off)
+goes to main through a PR once the human confirms `make submission` on it gives `a8ee1b28…`.
 
 - **Submitted CSV:** E005c. `submissions/hack_mavericks.csv`, sha256 `a8ee1b28…`: 308 possessions,
   mean 13.3 s, D 35.4% of graded frames, home share 0.594. Public window (correctness only):
@@ -210,18 +211,35 @@ is merged (PR #33).
   seen-ball frames (Diing). E012 (Smart Tagging phase tags as a gap team cue, PR #35) stopped at
   its gate: agree 0.80 / 0.78, but right on only 0.29 / 0.32 of the frames where E005c is wrong
   (line 0.50). Code kept, off (`tag_acc_* = None`).
+  2026-10-29 (`feat/e013-lang-dead-model`; prior-art review in
+  `docs/research/possession-prior-art.md`): E013 stop (Lang et al.'s full dead/alive recipe:
+  gate 2 bal 0.734 < 0.80 vs reference, but 0.864 vs public truth); E014 stop, refuted (teacher
+  without the slow cue: 0.527); E015 drop (E013's classifier as confident-alive cue: to_dead
+  0.085 but change recall 0.176). **Finding:** side changes in gaps go *through* D, the only
+  team-neutral state, so every alive cue cost recall. E016 drop, but the breakthrough: a 4-state
+  decoder with a "loose ball" state L (alive, team-neutral, 1 s); E016b (L + E015 cue) gave
+  to_dead 0.090 with recall 0.278, failing only on possessions 223 < 250 because every turnover
+  was routed through L (switch cost 6.06 → 9.97). 2026-11-06: E017 drop (L as an extra route,
+  direct switch kept): possessions back to 303 and E017b to_dead 0.079, but change recall 0.236 <
+  0.264 (E017a 0.224 < 0.314). Next idea, not to be run (freeze): L's entry cheaper only inside
+  gaps. All new options off (`loose_s = None`, `gap_dead_recipe = "e010"`, `gap_dead_teacher = "pass1"`).
 - **Tools the human runs** (print aggregates only, safe to paste back): `tools/inspect_cues.py`,
   `tools/masked_harness.py --gt …`, `tools/team_model_check.py --gt …`,
   `tools/inspect_touches.py --gt … [--cue touch]`, `tools/dead_model_check.py --gt …`,
   `tools/gap_dead_why.py`, `tools/inspect_restarts.py --gt …`, `tools/tag_gate.py`,
+  `tools/dead_model_check.py --recipe … --teacher …`, `tools/gap_alive_run.py --gt …`,
+  `tools/loose_run.py [--keep-switch] --gt …`,
   `make verify-baseline`,
   `make submission`, `make reproduce`.
 - **Known weaknesses:**
   - In gaps the model calls the ball dead on 14% of hidden in-play frames (harness `to_dead`
     0.141). Diagnosed 2026-10-22: 88% of those frames have the slow-players cue firing (slow play
-    with the ball unseen). Every fix tried so far (E010c/d) costs side-change recall in gaps.
-  - Synthetic v2 (G2) fixes walking at stoppages and gap lengths; the shape signal is still weak,
-    and hmm macroF1 on v2 (0.54) is below the vote's (0.63), not yet diagnosed.
+    with the ball unseen). Alive cues alone cost side-change recall in gaps (E010c/d, E015);
+    with the loose-ball state they do not (E016b), which E017 is testing.
+  - **Synthetic v2 is unusable for dead-ball changes** (found 2026-10-29): the decoder calls D on
+    1.1% of synthetic frames where truth has 28%. Likely cause: v2 caps stoppage player speed at
+    1.5 m/s, above the slow cue's 1.25 m/s line, so the cue hardly fires. Probably also why hmm
+    macroF1 on v2 (0.54) is below the vote's (0.63). Fix = G3 (not started).
 - **Lessons that bind new cues:** fix values, gates and criteria before the real run; gate a cue
   against the *decoded* labels on the same frames, not the raw cue it competes with; check that a
   carried cue's errors are not much longer than the ~5-frame correlation the weight assumes;
@@ -230,29 +248,20 @@ is merged (PR #33).
 
 ### Next session: start here
 
-**Human, to submit:**
-1. Merge PR #35 (E012, cue off: labels unchanged). Then on main: `make reproduce` (expect
-   `byte-identical: OK`) and `make submission` (expect sha256 `a8ee1b28…`).
-2. Make the repo public; `git status` must show no data files.
-3. Google Form: upload `submissions/hack_mavericks.csv` (as `hack_mavericks.csv`) and
-   `hack_mavericks.md`, plus the public repo URL. Validate the exact file you upload.
-4. Repo hygiene when convenient: delete merged branches, including
+The model is frozen; only submission work remains.
+
+**Human:**
+1. On `feat/e013-lang-dead-model`: `make submission` must print sha256 `a8ee1b28…` (proves every
+   E013–E017 option is off). Then merge its PR into main.
+2. On main: `make reproduce` (expect `byte-identical: OK`) and `make submission` (expect
+   `a8ee1b28…`), then `.venv/bin/python evaluation/validate_submission.py submissions/hack_mavericks.csv`.
+3. Make the repo public; `git status` must show no data files.
+4. Google Form (aim ~10 Nov): upload `submissions/hack_mavericks.csv` (as `hack_mavericks.csv`)
+   and `hack_mavericks.md`, plus the public repo URL. Validate the exact file you upload.
+5. Repo hygiene when convenient: delete merged branches, including
    `revert-29-feat/e009b-control-cue`.
 
-**Claude, at the start of the next session:** read this status and the end of EXPERIMENTS.md;
-check that `config.py` has `control_acc = None` and `gap_acc_strong = 0.86`; then propose the
-chosen step's design (values, gate, criterion) for the human's OK before any code.
-
-**Next step candidates** (hard stop 31 Oct for anything that changes labels):
-0. **E011 gate (Diing):** YOLO on frames where the tracking *has* the ball: detection share,
-   median error in metres, share within 2 m, at confidences 0.05 / 0.25 / 0.5. Pass bar to fix
-   before the run. Only then: the units fix, a cache in `cache/`, and a cue that is off by
-   default. Broadcast-ATD sync feasibility is parked behind it.
-1. **E010d revisit:** closest miss; only with more masking seeds and a criterion re-stated
-   before the run, never by moving this one's limit. (E007b restarts: not built, E007a.)
-2. If any model change lands, update `hack_mavericks.md` (sha, results, tables) with it.
-3. **Diagnose v2 synthetic macroF1** (hmm 0.54 vs vote 0.63), then the shape signal in G2.
-4. **E008 Metrica sample-data harness** (development aid only, never validation).
+**Claude:** no new experiments. Help only with the document, the PR and submission problems.
 
 **Deliverables, with dates:**
 - by ~7 Nov: model freeze; after it, no model changes.

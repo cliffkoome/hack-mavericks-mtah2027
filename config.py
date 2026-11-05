@@ -17,6 +17,12 @@ PARAMS = {
         "mean_possession_s": 12.0,  # typical possession length in elite football
         "stoppage_share": 0.3,      # share of possessions ending in a stoppage, not a turnover
         "mean_dead_s": 15.0,        # typical stoppage length
+        # E016: mean seconds in the loose-ball state L (alive, neither side), through which every
+        # turnover then goes; a duel or a ball in flight lasts about 1 s. None = no L (E005c).
+        "loose_s": None,
+        # E017: keep the direct H <-> A switch beside L (L is a second route), so a turnover
+        # costs what it did without L. False = E016 (every turnover through L).
+        "loose_keep_switch": False,
     },
 
     # hmm: per-frame evidence (evidence.py). Each value is a probability with a stated meaning.
@@ -61,6 +67,13 @@ PARAMS = {
         # (dead_model.py) replaces the slow-players cue. Rates measured in E010a row (3).
         "gap_dead_alive": None,     # P(classifier says dead | alive); 0.021 measured; None = off
         "gap_dead_dead": 0.64,      # P(classifier says dead | dead); 0.643 measured
+        # E013: which recipe the dead/alive classifier uses (dead_model.RECIPES). "e010" = E010's;
+        # "lang" = Lang et al.'s full recipe. Read only when a gap dead cue above is on.
+        "gap_dead_recipe": "e010",
+        # E014: the labels the dead/alive classifier learns from. "pass1" = the pass-1 labels
+        # (E010/E013); "no_slow" = pass 1 decoded without the slow cue, so the classifier cannot
+        # copy that cue's false alarms. Read only when a gap dead cue above is on.
+        "gap_dead_teacher": "pass1",
         # E010d (off): on untracked frames, beside the slow cue, "confidently alive" =
         # p_dead <= 0.3 as a yes/no cue. Rates measured against the pass-1 reference.
         "gap_alive_alive": None,    # P(confidently alive | alive); 0.968 measured; None = off

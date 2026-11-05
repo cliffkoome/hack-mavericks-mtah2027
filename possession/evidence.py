@@ -38,8 +38,11 @@ from possession import H, A, D, features
 
 
 def log_emissions(tracking, spec, params, p_home=None, control=None, p_dead=None,
-                  tag=None):
+                  tag=None, loose=False):
     """(n, 3) array: log P(evidence at frame t | state), columns in H, A, D order.
+
+    loose: also a fourth column for the decoder's loose-ball state (E016): D's team terms (log 0.5
+    on every team cue) with the alive states' dead/alive terms.
 
     p_home: per-frame P(H has the ball) from team_model, NaN where unknown; None = no gap cue.
     control: per-frame last-control side (H/A, negative where unknown); None = no control cue.
@@ -98,6 +101,8 @@ def log_emissions(tracking, spec, params, p_home=None, control=None, p_dead=None
         _add_gap_team(out, p_home, missing, params)
     if tag is not None:
         _add_tag_team(out, tag, missing, p_home, params)
+    if loose:
+        out = np.column_stack([out, out[:, D] + alive_dead[:, 0]])
     out[:, H] += alive_dead[:, 0]
     out[:, A] += alive_dead[:, 0]
     out[:, D] += alive_dead[:, 1]

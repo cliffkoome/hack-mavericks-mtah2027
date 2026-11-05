@@ -162,6 +162,8 @@ the criterion decided. The log has every number.
 | E010 | dead/alive from player movement inside ball gaps | **dropped** (three versions): it cut wrong dead calls in gaps (14% → 4.5–10%) but cost side-change recall in gaps or the overall D share |
 | E007 | set-piece tags as restart evidence | **not built**: our labels already have D near 86% of set-piece starts |
 | E012 | phase tags (attacking / defending) as a team cue where the ball is untracked | **stopped at its gate**: the tags agree with our labels ~80% of the time, but are right on only ~30% of the frames where our model has the wrong side, so they repeat our errors rather than fix them |
+| E013–E015 | a published dead/alive recipe (Lang et al.) for the movement classifier, and its confident "alive" call as a gap cue | **stopped / dropped**: the classifier missed its gate against our labels (0.73 < 0.80); as a cue it cut wrong dead calls in gaps (14% → 8.5%) but side-change recall fell to 18%. Finding: in gaps our decoder changes side *through* D, the only state with no team, so any "alive" cue blocks those changes |
+| E016–E017 | a fourth decoder state, "loose ball" (alive, no team), so a side change in a gap need not pass through D | **dropped** (four versions): with the loose ball as the only turnover route, recall held (0.28) but possessions fell 308 → 223; as an extra route, possessions held (303) and wrong dead calls fell to 7.9%, but recall fell to 0.24 (limit 0.264) |
 
 Kept, in order: E001 (the decoder: possessions 584 → 316), E003 (players walking: D share
 45% → 37%), E005c (gap team cue: possessions 275 → 308). When we hid the ball on seen frames to
@@ -178,7 +180,7 @@ imitate gaps, E005c raised the share of side changes the decoder still found fro
 - **Pre-registered plausibility bands** for the full match: possessions, mean duration, D share.
 - **Synthetic matches** (`tools/make_synthetic.py`). Our generator writes fake bundles in the real
   formats, with known truth. They test correctness and robustness only, never select a version.
-  All 139 tests run on synthetic data and the public ground truth.
+  All 179 tests run on synthetic data and the public ground truth.
 
 ## Limitations
 
@@ -191,7 +193,8 @@ imitate gaps, E005c raised the share of side changes the decoder still found fro
   plausible, but stoppage edges are soft.
 - **Wrong dead calls in gaps.** When the ball is lost during slow build-up play, the
   players-walking cue fires and the model can call play dead (14% of hidden in-play frames in the
-  harness). Every fix we tried traded this against side-change recall.
+  harness). Every fix we tried (E010, E013–E017) traded this against side-change recall or the
+  possession count; a loose-ball state that is cheap only inside ball gaps is the untested next step.
 - **Transitions are early by a few frames** (public median −4 frames). The nearest player flips
   to the receiver before control. That is free within the metric's tolerance, but it shortens
   matched possessions slightly.

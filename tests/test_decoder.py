@@ -352,3 +352,115 @@ def test_tag_cue_unsure_only_skips_confident_classifier_frames():
              - evidence.log_emissions(tracking, SPEC, params, p_home=p_home))
     np.testing.assert_array_equal(shift[[0, 3]], 0.0)  # confident either way
     assert (shift[[1, 2], A] > shift[[1, 2], H]).all()
+
+
+# -- E016: the loose-ball state ------------------------------------------------------------------
+
+LOOSE = dict(PARAMS["decoder"], loose_s=1.0)
+
+
+def test_loose_transition_rows_are_distributions_and_turnovers_go_through_l():
+    log_trans = decoder.transition_matrix(LOOSE, FPS)
+    assert log_trans.shape == (4, 4)
+    assert np.allclose(np.exp(log_trans).sum(axis=1), 1.0)
+    trans = np.exp(log_trans)
+    assert trans[H, A] == 0 and trans[A, H] == 0 and trans[D, decoder.L] == 0
+    assert trans[decoder.L, D] == 0
+    assert trans[H, decoder.L] == pytest.approx(np.exp(LOG_TRANS[H, A]))  # E005c's switch rate
+    assert trans[decoder.L, H] == pytest.approx(0.5 / FPS)
+
+
+def test_loose_off_is_the_three_state_decoder():
+    assert PARAMS["decoder"]["loose_s"] is None
+    assert np.array_equal(decoder.transition_matrix(PARAMS["decoder"], FPS), LOG_TRANS)
+
+
+@pytest.mark.parametrize("seed", range(10))
+def test_four_state_viterbi_equals_brute_force(seed):
+    rng = np.random.default_rng(seed)
+    log_emit = rng.normal(size=(6, 4))
+    log_trans = np.log(rng.dirichlet(np.ones(4), size=4))
+    log_init = np.log(rng.dirichlet(np.ones(4)))
+    best, best_path = -np.inf, None
+    for path in itertools.product(range(4), repeat=6):
+        score = log_init[path[0]] + log_emit[0, path[0]]
+        for t in range(1, 6):
+            score += log_trans[path[t - 1], path[t]] + log_emit[t, path[t]]
+        if score > best:
+            best, best_path = score, path
+    assert np.array_equal(decoder.viterbi(log_emit, log_trans, log_init), best_path)
+
+
+@pytest.mark.parametrize("path, expected", [
+    ([H, 3, 3, 3, 3, A], [H, H, H, A, A, A]),        # between sides: split at the midpoint
+    ([H, 3, 3, 3, A], [H, H, A, A, A]),               # odd length: the later side gets the extra
+    ([A, 3, 3, A], [A, A, A, A]),                      # one side either end
+    ([D, 3, 3, H], [D, H, H, H]),                      # D before: the side after
+    ([H, 3, 3], [H, H, H]),                            # half's edge after
+    ([D, 3, D], [D, X, D]),                            # no side at either end
+])
+def test_resolve_loose(path, expected):
+    assert np.array_equal(decoder.resolve_loose(np.array(path, dtype=np.int8)), expected)
+
+
+def test_loose_column_is_d_team_terms_with_alive_dead_terms():
+    """L scores the team cue like D and the dead/alive cues like H and A."""
+    tracking = _walking_tracking([0.5] * 4)
+    tracking.ball = np.array([[50.5, 25], [np.nan, np.nan], [np.nan, np.nan], [50.5, 25]])
+    params = evidence_params()
+    three = evidence.log_emissions(tracking, SPEC, params)
+    four = evidence.log_emissions(tracking, SPEC, params, loose=True)
+    assert np.array_equal(four[:, :3], three)
+    ball_only = evidence_params(near_m=0.0, mid_m=0.0)  # no team cue anywhere
+    no_team = evidence.log_emissions(tracking, SPEC, ball_only, loose=True)
+    assert np.allclose(no_team[:, decoder.L], no_team[:, H])
+    team_only = evidence.log_emissions(tracking, SPEC, params, loose=True)[:, decoder.L] \
+        - no_team[:, decoder.L]
+    assert np.allclose(team_only, (three[:, D] - evidence.log_emissions(
+        tracking, SPEC, ball_only)[:, D]))
+
+
+def test_loose_decoder_writes_no_l_and_runs_on_synthetic(synthetic):
+    from possession import atd, pipeline
+
+    data_dir, _ = synthetic
+    spec = spec_module.load(data_dir)
+    tracking = atd.load(spec, data_dir)
+    params = copy.deepcopy(PARAMS)
+    params["decoder"]["loose_s"] = 1.0
+    codes = pipeline.label(tracking, spec, params)
+    assert set(np.unique(codes)) <= {H, A, D, X}
+    assert np.array_equal(codes, pipeline.label(tracking, spec, params))
+
+
+def test_loose_run_variants_change_only_what_e016_says():
+    import loose_run
+
+    out = loose_run.variants(PARAMS)
+    (alone, _), (with_cue, _) = out.values()
+    assert alone["decoder"]["loose_s"] == 1.0 and with_cue["decoder"]["loose_s"] == 1.0
+    assert alone["evidence"] == PARAMS["evidence"]
+    assert (with_cue["evidence"]["gap_alive_alive"], with_cue["evidence"]["gap_alive_dead"]) \
+        == (0.98, 0.31)
+    assert with_cue["evidence"]["gap_dead_recipe"] == "lang"
+    assert PARAMS["decoder"]["loose_s"] is None
+
+
+def test_keep_switch_keeps_the_direct_switch_and_adds_l_beside_it():
+    log_trans = decoder.transition_matrix(dict(LOOSE, loose_keep_switch=True), FPS)
+    trans, old = np.exp(log_trans), np.exp(LOG_TRANS)
+    assert np.allclose(trans.sum(axis=1), 1.0)
+    assert trans[H, A] == pytest.approx(old[H, A]) and trans[A, H] == pytest.approx(old[A, H])
+    assert trans[H, decoder.L] == pytest.approx(old[H, A])
+    assert trans[H, D] == pytest.approx(old[H, D])
+    assert trans[H, H] == pytest.approx(old[H, H] - old[H, A])
+    assert PARAMS["decoder"]["loose_keep_switch"] is False
+
+
+def test_loose_run_keep_switch_variants():
+    import loose_run
+
+    names = list(loose_run.variants(PARAMS, keep_switch=True))
+    assert names[0].startswith("E017a") and names[1].startswith("E017b")
+    for params, _ in loose_run.variants(PARAMS, keep_switch=True).values():
+        assert params["decoder"]["loose_keep_switch"] is True
