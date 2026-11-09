@@ -15,7 +15,7 @@ tracking only: who is nearest the ball, whether the ball is seen, outside the li
 whether the players are walking, and, where the ball is lost, which side the players' shape says
 is attacking. That last cue comes from a classifier trained on the match itself. Everything is
 deterministic CPU code. One command rebuilds the submitted file byte-for-byte from the data
-bundle in about 20 seconds.
+bundle.
 
 ## Results we can report
 
