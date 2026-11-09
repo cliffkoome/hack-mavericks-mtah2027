@@ -178,13 +178,17 @@ python starter/baseline.py                            # rebuild baselines (needs
 
 ## Current status (update at the end of every session)
 
-Last updated: 2026-11-06. Deadline 17 November 2026: 11 days left.
+Last updated: 2026-11-09. Deadline 17 November 2026: 8 days left.
 **MODEL FROZEN at E005c (2026-11-06).** E017 (last experiment) dropped by its pre-set criteria;
-no model changes from here. Submission = E005c (not yet submitted). Technical document:
-`hack_mavericks.md`. Branch `feat/e013-lang-dead-model` (E013–E017 logged, every new option off)
-goes to main through a PR once the human confirms `make submission` on it gives `a8ee1b28…`.
+no model changes from here. Submission = E005c, **not yet submitted**. Repo still **private**.
+`feat/e013-lang-dead-model` (E013–E017, every new option off) merged to main (PR #36).
+Technical document `hack_mavericks.md` reviewed and fixed 2026-11-09 (PR #37, merged): noise
+band ~0.33, real repo URL, full sha256, plausibility bands, smooth125 tie explained, runtime
+claim dropped. Deliberately left out: team member list and an E011 row.
+`submissions/hack_mavericks.csv` on disk hashes to `a8ee1b28…`; a fresh post-merge
+`make reproduce` / `make submission` on main is still to be run by the human.
 
-- **Submitted CSV:** E005c. `submissions/hack_mavericks.csv`, sha256 `a8ee1b28…`: 308 possessions,
+- **Submission CSV:** E005c. `submissions/hack_mavericks.csv`, sha256 `a8ee1b28…`: 308 possessions,
   mean 13.3 s, D 35.4% of graded frames, home share 0.594. Public window (correctness only):
   16 possessions (truth 17), spellF1 0.4242, macroF1 0.6980. Floor to beat: 0.2433.
 - **main's config = the submitted model (E005c)**, every later cue off. Confirmed on real data
@@ -251,21 +255,21 @@ goes to main through a PR once the human confirms `make submission` on it gives 
 The model is frozen; only submission work remains.
 
 **Human:**
-1. On `feat/e013-lang-dead-model`: `make submission` must print sha256 `a8ee1b28…` (proves every
-   E013–E017 option is off). Then merge its PR into main.
+1. (Done: PR #36 and PR #37 merged into main.)
 2. On main: `make reproduce` (expect `byte-identical: OK`) and `make submission` (expect
    `a8ee1b28…`), then `.venv/bin/python evaluation/validate_submission.py submissions/hack_mavericks.csv`.
-3. Make the repo public; `git status` must show no data files.
+3. Make the repo public (before the form: the document's clone link needs it); `git status`
+   must show no data files.
 4. Google Form (aim ~10 Nov): upload `submissions/hack_mavericks.csv` (as `hack_mavericks.csv`)
    and `hack_mavericks.md`, plus the public repo URL. Validate the exact file you upload.
 5. Repo hygiene when convenient: delete merged branches, including
-   `revert-29-feat/e009b-control-cue`.
+   `revert-29-feat/e009b-control-cue`, `docs/review-fixes`.
 
 **Claude:** no new experiments. Help only with the document, the PR and submission problems.
 
 **Deliverables, with dates:**
-- by ~7 Nov: model freeze; after it, no model changes.
-- 7–12 Nov: write `hack_mavericks.md` (approach, assets used and dropped, possession rules,
-  limitations, reproduction) from EXPERIMENTS.md; make the repo public; final `make reproduce` +
-  `validate_submission.py`; submit via the Google Form (CSV + public repo URL + document).
+- by ~7 Nov: model freeze; after it, no model changes. **Done (2026-11-06).**
+- 7–12 Nov: write `hack_mavericks.md` **(done, reviewed 2026-11-09)**; make the repo public;
+  final `make reproduce` + `validate_submission.py`; submit via the Google Form (CSV + public
+  repo URL + document). **Still open.**
 - 13–17 Nov: buffer for submission problems only.
