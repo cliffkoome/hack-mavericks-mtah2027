@@ -1,8 +1,9 @@
 # Hack Mavericks — Ball possession from tracking alone
 
 More than a Hack 2027, Phase 1. Team **Hack Mavericks**.
-Submission file: `hack_mavericks.csv` (199,319 rows, sha256 `a8ee1b287dadc674…`).
-Code: this repository. Full experiment log with every number: [EXPERIMENTS.md](EXPERIMENTS.md).
+Submission file: `hack_mavericks.csv` (199,319 rows), sha256
+`a8ee1b287dadc6748247c253364124349454a76903ccda8b4d9552fc17c12950`.
+Code: <https://github.com/cliffkoome/hack-mavericks-mtah2027>. Full experiment log with every number: [EXPERIMENTS.md](EXPERIMENTS.md).
 
 ## In one paragraph
 
@@ -20,7 +21,7 @@ bundle in about 20 seconds.
 
 The public 5 minutes is the only ground truth we had. We used it to check correctness, never to
 choose between versions: 17 possessions are far too few to rank models. The scorer itself reports
-gaps below ~0.36 spellF1 as noise there.
+gaps below ~0.33 spellF1 as noise there.
 
 | public window (frames 11,185–18,684) | spellF1 | 5–95% bootstrap | macroF1 | 5–95% bootstrap | possessions (truth 17) |
 |---|---|---|---|---|---|
@@ -29,18 +30,24 @@ gaps below ~0.36 spellF1 as noise there.
 | baseline_smooth50 (the published floor) | 0.3256 | | 0.6207 | | 26 |
 | baseline_raw | 0.0378 | | 0.5972 | | 131 |
 
+We tie `baseline_smooth125` on public spellF1. With 17 possessions spellF1 cannot separate the two;
+macroF1 can (0.70 vs 0.58). The organisers' full-match figures also show why the tie says little:
+smooth125 falls to 0.2242 there, below smooth50's 0.2433, because a 125-frame window swallows
+short possessions, which a decoder with a switching cost can keep.
+
 Per class on the public window: H F1 0.80, A F1 0.81, D F1 0.49 (precision 0.998, recall 0.32).
 Alive/dead F1 0.92, team accuracy on alive frames 0.87, home share error 0.006.
 
 Over the full match, where there is no ground truth for us, we checked that the output looks like
-football. We fixed these plausibility bands before each run:
+football. We fixed these plausibility bands before each run (E005c's own criterion also required
+more possessions than E003's 275):
 
-| full match | value |
-|---|---|
-| possessions | 308 |
-| mean possession | 13.3 s |
-| dead ball, share of graded frames | 35.4% (56,166 of 158,857) |
-| home share of alive frames | 0.594 (published possession for Barcelona ≈ 0.65, a pass-based figure, used only as a sanity check) |
+| full match | value | band fixed in advance |
+|---|---|---|
+| possessions | 308 | 200–400 |
+| mean possession | 13.3 s | 10–20 s |
+| dead ball, share of graded frames | 35.4% (56,166 of 158,857) | 30–42% |
+| home share of alive frames | 0.594 | none (published possession for Barcelona ≈ 0.65, a pass-based figure, used only as a sanity check) |
 
 For comparison, the published baseline's window vote (smooth50) gives 584 possessions of 7.2 s
 on the full match. It fragments possessions, which spellF1 punishes.
@@ -94,7 +101,7 @@ noisy reading would count as 25 votes and drown the switching cost.
 
 **Team from movement inside ball gaps** (`possession/team_model.py`). The ball is lost on 41% of
 graded frames. The gaps come in long blocks (median 7.2 s in play), not flickers, and they cover
-17% of the frames we call alive. Without the ball the decoder can only carry the last side
+17% of the frames we call alive (in-play frames as our labels see them). Without the ball the decoder can only carry the last side
 through the gap, so possessions that change hands there disappear. The players stay tracked, and
 their shape gives the side away: the attacking side pushes up and spreads out, the defending side
 drops back, closes up and presses.
@@ -145,7 +152,7 @@ drops back, closes up and presses.
 | Public 5-minute ground truth | Correctness checks and measuring cue rates (e.g. the players-walking rates). Never used to choose between versions. |
 | Smart Tagging | **Measured, dropped.** Team semantics differ by code: for attacking phases Team is the side with the ball, for defending phases the side without it. Phases are not possessions. Our labels already have a dead ball within 3 s of 86% of set-piece starts, and after a corner tag the first side in our labels matches the tagged team only 25% of the time (the public window holds just 2 set-piece tags, too few to say which is right), so set pieces add little (EXPERIMENTS.md, E002, E007a). Phase tags as a team cue in ball gaps were also tested and stopped at their gate: where our model is wrong, the tags are mostly wrong too (E012). |
 | Homography | Not needed: the tracking is already in pitch coordinates. |
-| Tactical and broadcast video | Not used. Ball detection from video was the last step of our plan, kept for only if the tracking-only model plateaued. We chose explainable CPU code that the organisers can rerun instead. |
+| Tactical and broadcast video | Not used. Ball detection from video was the last step of our plan, held in reserve in case the tracking-only model plateaued. We chose explainable CPU code that the organisers can rerun instead. |
 | Broadcast-feed tracking | Not used; the submission is indexed by tactical-video frames. |
 
 ## What we tried and dropped
@@ -166,7 +173,7 @@ the criterion decided. The log has every number.
 | E016–E017 | a fourth decoder state, "loose ball" (alive, no team), so a side change in a gap need not pass through D | **dropped** (four versions): with the loose ball as the only turnover route, recall held (0.28) but possessions fell 308 → 223; as an extra route, possessions held (303) and wrong dead calls fell to 7.9%, but recall fell to 0.24 (limit 0.264) |
 
 Kept, in order: E001 (the decoder: possessions 584 → 316), E003 (players walking: D share
-45% → 37%), E005c (gap team cue: possessions 275 → 308). When we hid the ball on seen frames to
+45% → 37%, possessions 316 → 275, mean 11.0 s → 14.6 s), E005c (gap team cue: possessions 275 → 308). When we hid the ball on seen frames to
 imitate gaps, E005c raised the share of side changes the decoder still found from 12% to 28%.
 
 ## How we validated without a full-match ground truth
@@ -186,7 +193,7 @@ imitate gaps, E005c raised the share of side changes the decoder still found fro
 
 - **The real score is unknown.** The public window is small (17 possessions; spellF1 interval
   0.24–0.61) and better tracked than the rest of the match: the ball is lost on 6.5% of its
-  in-play frames, against 17% over the match. Expect the full-match score to be lower than the
+  in-play frames, against 17% of the frames we call in play over the match. Expect the full-match score to be lower than the
   public one, as it is for the baselines (smooth50: 0.33 public, 0.24 full).
 - **Dead ball is under-called on the public window** (D recall 0.32 at precision 0.998): short
   stoppages with players still moving read as play. Over the full match the D share (35.4%) is
@@ -207,10 +214,11 @@ imitate gaps, E005c raised the share of side changes the decoder still found fro
 ## Reproduction
 
 Requirements: Python 3.12 (tested 3.12.7), CPU only, about 1 GB of RAM. Pinned dependencies in
-`requirements.txt` (numpy, pandas, scikit-learn 1.5.2, scipy, joblib, threadpoolctl).
+`requirements.txt` (numpy, pandas, python-dateutil, six, scikit-learn 1.5.2, scipy, joblib,
+threadpoolctl).
 
 ```bash
-git clone <this repository> && cd <it>
+git clone https://github.com/cliffkoome/hack-mavericks-mtah2027.git && cd hack-mavericks-mtah2027
 python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt   # or: make venv (pyenv)
 # unpack the match bundle into ./data, or set MTAH_DATA_DIR to it
 .venv/bin/python run_pipeline.py              # -> submissions/hack_mavericks.csv, prints sha256
@@ -219,13 +227,13 @@ python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt   # or: ma
 
 Or with make: `make submission` (build and validate) and `make reproduce` (build twice from
 scratch, require byte-identical files). The expected sha256 is
-`a8ee1b287dadc674…`. Every hyperparameter is in `config.py`, with its reason next to it. The
+`a8ee1b287dadc6748247c253364124349454a76903ccda8b4d9552fc17c12950`. Every hyperparameter is in `config.py`, with its reason next to it. The
 pipeline is deterministic: fixed seeds, single-threaded model fitting, no GPU.
 
 Code map: `possession/atd.py` (reader), `features.py`, `evidence.py`, `decoder.py`,
 `team_model.py`, `rules.py`, `pipeline.py`, `submission.py`; `run_pipeline.py` is the one
 command. Experiments and diagnostics are in `tools/`, tests in `tests/` (`make test`, synthetic
-data only).
+data and the public ground truth only).
 
 ## References
 
