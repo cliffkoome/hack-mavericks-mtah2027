@@ -9,8 +9,8 @@ Team name: **Hack Mavericks**. Deliverables: `hack_mavericks.csv` and `hack_mave
 no spaces; the technical document is Markdown because `.gitignore` excludes `*.pdf`). Code lives in the
 `possession/` package.
 
-Repos: `origin` = github.com/cliffkoome/hack-mavericks-mtah2027 (ours; private during development,
-must be made public before submitting). `upstream` = the organisers' challenge repo, fetch-only
+Repos: `origin` = github.com/cliffkoome/hack-mavericks-mtah2027 (ours; public since 2026-11-16,
+must stay public: it is the submitted repo URL). `upstream` = the organisers' challenge repo, fetch-only
 (push URL disabled). Never push to upstream; pull organiser fixes with `git fetch upstream`.
 
 - Output: CSV `frame,label`, exactly 199,319 rows, frames 0..199318 in order.
@@ -178,15 +178,19 @@ python starter/baseline.py                            # rebuild baselines (needs
 
 ## Current status (update at the end of every session)
 
-Last updated: 2026-11-09. Deadline 17 November 2026: 8 days left.
+Last updated: 2026-11-16. Deadline 17 November 2026 23:59 CET.
+**SUBMITTED 2026-11-16** via the Google Form: `hack_mavericks.csv` (sha256 `a8ee1b28…c12950`),
+`hack_mavericks.md`, repo URL https://github.com/cliffkoome/hack-mavericks-mtah2027 (made
+**public** 2026-11-16 after a history check: only `data/README.md` under `data/`). Team members
+on the form: Diing Garang, Vincent Mutua, Maximilian Mwenda (plus the repo owner).
+Before submitting, on main: `make reproduce` → `byte-identical: OK`; `make submission` →
+`a8ee1b28…`; `validate_submission.py` → OK (199,319 rows, 308 possessions, mean 13.3 s).
 **MODEL FROZEN at E005c (2026-11-06).** E017 (last experiment) dropped by its pre-set criteria;
-no model changes from here. Submission = E005c, **not yet submitted**. Repo still **private**.
+no model changes from here.
 `feat/e013-lang-dead-model` (E013–E017, every new option off) merged to main (PR #36).
 Technical document `hack_mavericks.md` reviewed and fixed 2026-11-09 (PR #37, merged): noise
 band ~0.33, real repo URL, full sha256, plausibility bands, smooth125 tie explained, runtime
 claim dropped. Deliberately left out: team member list and an E011 row.
-`submissions/hack_mavericks.csv` on disk hashes to `a8ee1b28…`; a fresh post-merge
-`make reproduce` / `make submission` on main is still to be run by the human.
 
 - **Submission CSV:** E005c. `submissions/hack_mavericks.csv`, sha256 `a8ee1b28…`: 308 possessions,
   mean 13.3 s, D 35.4% of graded frames, home share 0.594. Public window (correctness only):
@@ -252,24 +256,24 @@ claim dropped. Deliberately left out: team member list and an E011 row.
 
 ### Next session: start here
 
-The model is frozen; only submission work remains.
+Phase 1 is submitted. Nothing is required before the deadline. The organisers may re-run the
+winning repo, so `main` must keep regenerating `a8ee1b28…`: do not change the model, the
+pipeline, `config.py` or `requirements.txt`, and keep the repo public.
 
 **Human:**
-1. (Done: PR #36 and PR #37 merged into main.)
-2. On main: `make reproduce` (expect `byte-identical: OK`) and `make submission` (expect
-   `a8ee1b28…`), then `.venv/bin/python evaluation/validate_submission.py submissions/hack_mavericks.csv`.
-3. Make the repo public (before the form: the document's clone link needs it); `git status`
-   must show no data files.
-4. Google Form (aim ~10 Nov): upload `submissions/hack_mavericks.csv` (as `hack_mavericks.csv`)
-   and `hack_mavericks.md`, plus the public repo URL. Validate the exact file you upload.
-5. Repo hygiene when convenient: delete merged branches, including
+1. Keep the form confirmation. Only the last response before 17 Nov 23:59 CET counts; resubmit
+   only to fix a submission problem.
+2. Repo hygiene when convenient: delete merged branches, including
    `revert-29-feat/e009b-control-cue`, `docs/review-fixes`.
+3. Wait for results / Phase 2 news by email.
 
-**Claude:** no new experiments. Help only with the document, the PR and submission problems.
+**Claude:** no model or pipeline changes. Docs-only fixes if asked (known cosmetic flaw: the
+`[EXPERIMENTS.md](EXPERIMENTS.md)` link on line 6 of `hack_mavericks.md` is relative, so it does
+not resolve in the uploaded copy).
 
 **Deliverables, with dates:**
 - by ~7 Nov: model freeze; after it, no model changes. **Done (2026-11-06).**
 - 7–12 Nov: write `hack_mavericks.md` **(done, reviewed 2026-11-09)**; make the repo public;
   final `make reproduce` + `validate_submission.py`; submit via the Google Form (CSV + public
-  repo URL + document). **Still open.**
+  repo URL + document). **Done (2026-11-16).**
 - 13–17 Nov: buffer for submission problems only.
